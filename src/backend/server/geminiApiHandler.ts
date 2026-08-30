@@ -42,7 +42,7 @@ export async function handleGeminiApiRequest(
         providerName: 'GEMINI',
         modelName: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
         statusLabel: 'Deterministic Fallback Active',
-        error: err.message
+        error: 'Gemini health check uncontactable'
       }));
       return true;
     }
@@ -69,7 +69,10 @@ export async function handleGeminiApiRequest(
 
         if (!text.trim()) {
           res.statusCode = 400;
-          res.end(JSON.stringify({ error: 'Missing text parameter' }));
+          res.end(JSON.stringify({ 
+            error: 'Invalid request: missing text parameter',
+            code: 400
+          }));
           return;
         }
 
@@ -77,7 +80,8 @@ export async function handleGeminiApiRequest(
         if (!provider.isConfigured()) {
           res.statusCode = 503;
           res.end(JSON.stringify({
-            error: 'GEMINI_API_KEY is not configured on server.',
+            error: 'Gemini service not configured on server.',
+            code: 503,
             fallbackAvailable: true
           }));
           return;
@@ -93,10 +97,21 @@ export async function handleGeminiApiRequest(
           model: provider.getModelName()
         }));
       } catch (err: any) {
-        console.warn('[GeminiApiHandler] Server interpretation error:', err.message);
-        res.statusCode = 500;
+        const errMsg = err.message || '';
+        let statusCode = 500;
+
+        if (errMsg.includes('401') || errMsg.includes('API_KEY_INVALID') || errMsg.includes('Unauthorized')) {
+          statusCode = 401;
+        } else if (errMsg.includes('429') || errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('quota')) {
+          statusCode = 429;
+        } else if (errMsg.includes('timeout') || errMsg.includes('ETIMEDOUT')) {
+          statusCode = 504;
+        }
+
+        res.statusCode = statusCode;
         res.end(JSON.stringify({
-          error: err.message || 'Gemini inference failed',
+          error: 'Gemini request could not be processed. Fallback to deterministic NLP active.',
+          code: statusCode,
           fallbackAvailable: true
         }));
       }

@@ -8,12 +8,17 @@ import {
   Layers, 
   CheckCircle2, 
   ChevronRight,
-  Play
+  Play,
+  Cpu,
+  AlertTriangle
 } from 'lucide-react';
 import { DEMO_SCENARIOS, DemoScenario } from '../data/demoScenarios';
 import { localStore } from '../../backend/storage/localStore';
 import { SihWhyThisMattersModal } from './SihWhyThisMattersModal';
 import { SihArchitectureModal } from './SihArchitectureModal';
+import { WhatGeminiDoesModal } from './WhatGeminiDoesModal';
+import { llmGateway } from '../../ai-services/llm/LLMGateway';
+import { MockLLMProvider } from '../../ai-services/llm/providers/MockLLMProvider';
 
 interface SihDemoToolbarProps {
   onLoadScenario: (scenarioId: 'DEMO_A' | 'DEMO_B' | 'DEMO_C' | 'DEMO_D', targetScreen: 'patient' | 'doctor' | 'emergency') => void;
@@ -23,7 +28,9 @@ interface SihDemoToolbarProps {
 export const SihDemoToolbar: React.FC<SihDemoToolbarProps> = ({ onLoadScenario, activeScreen }) => {
   const [isWhyModalOpen, setIsWhyModalOpen] = useState(false);
   const [isArchModalOpen, setIsArchModalOpen] = useState(false);
+  const [isWhatGeminiModalOpen, setIsWhatGeminiModalOpen] = useState(false);
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
+  const [isSimulatedFallback, setIsSimulatedFallback] = useState(false);
 
   const handleSelect = (scenarioId: 'DEMO_A' | 'DEMO_B' | 'DEMO_C' | 'DEMO_D', targetScreen: 'patient' | 'doctor' | 'emergency') => {
     setActiveScenarioId(scenarioId);
@@ -44,6 +51,18 @@ export const SihDemoToolbar: React.FC<SihDemoToolbarProps> = ({ onLoadScenario, 
     onLoadScenario(scenarioId, targetScreen);
   };
 
+  const handleSimulateFallback = () => {
+    if (!isSimulatedFallback) {
+      // Switch primary to failing mock provider to demonstrate fallback
+      llmGateway.setPrimaryProvider(new MockLLMProvider({ simulateHttpError: true }));
+      setIsSimulatedFallback(true);
+    } else {
+      // Reset
+      llmGateway.setPrimaryProvider(llmGateway.getFallbackProvider());
+      setIsSimulatedFallback(false);
+    }
+  };
+
   return (
     <>
       <div className="bg-slate-900 text-white border-b border-slate-800 px-3 py-2 text-xs select-none sticky top-0 z-40 shadow-md">
@@ -55,7 +74,7 @@ export const SihDemoToolbar: React.FC<SihDemoToolbarProps> = ({ onLoadScenario, 
               SIH26047 DEMO MODE
             </span>
             <span className="text-[11px] text-slate-400 hidden lg:inline font-medium">
-              One-Click Judge Scenario Presets:
+              One-Click Judge Presets:
             </span>
           </div>
 
@@ -115,10 +134,32 @@ export const SihDemoToolbar: React.FC<SihDemoToolbarProps> = ({ onLoadScenario, 
               <Activity className="w-3 h-3 text-teal-400" />
               <span>Demo D: AYUSH Intake</span>
             </button>
+
+            {/* Fallback Simulation Button */}
+            <button
+              onClick={handleSimulateFallback}
+              className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-all border ${
+                isSimulatedFallback
+                  ? 'bg-amber-600 text-white border-amber-400 animate-pulse'
+                  : 'bg-slate-800 text-amber-300/80 border-slate-700 hover:bg-slate-700'
+              }`}
+              title="Test resilience: Simulates Gemini API unavailability and shows local deterministic NLP fallback"
+            >
+              <Cpu className="w-3 h-3 text-amber-400" />
+              <span>{isSimulatedFallback ? 'Simulating Fallback (Active)' : 'Test Fallback'}</span>
+            </button>
           </div>
 
           {/* Info Modals Trigger Buttons */}
           <div className="flex items-center gap-1.5 border-l border-slate-700 pl-2">
+            <button
+              onClick={() => setIsWhatGeminiModalOpen(true)}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 text-[11px] font-semibold border border-emerald-700/80 transition-colors"
+            >
+              <Sparkles className="w-3 h-3 text-emerald-400" />
+              <span>What Gemini Does</span>
+            </button>
+
             <button
               onClick={() => setIsWhyModalOpen(true)}
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium border border-slate-700 transition-colors"
@@ -132,20 +173,26 @@ export const SihDemoToolbar: React.FC<SihDemoToolbarProps> = ({ onLoadScenario, 
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium border border-slate-700 transition-colors"
             >
               <Layers className="w-3 h-3 text-indigo-400" />
-              <span>Architecture & AI</span>
+              <span>Architecture &amp; Safety</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* Modals */}
-      <SihWhyThisMattersModal 
-        isOpen={isWhyModalOpen} 
-        onClose={() => setIsWhyModalOpen(false)} 
+      {/* Info Modals */}
+      <SihWhyThisMattersModal
+        isOpen={isWhyModalOpen}
+        onClose={() => setIsWhyModalOpen(false)}
       />
-      <SihArchitectureModal 
-        isOpen={isArchModalOpen} 
-        onClose={() => setIsArchModalOpen(false)} 
+
+      <SihArchitectureModal
+        isOpen={isArchModalOpen}
+        onClose={() => setIsArchModalOpen(false)}
+      />
+
+      <WhatGeminiDoesModal
+        isOpen={isWhatGeminiModalOpen}
+        onClose={() => setIsWhatGeminiModalOpen(false)}
       />
     </>
   );

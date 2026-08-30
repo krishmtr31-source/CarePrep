@@ -11,7 +11,8 @@ import {
   CheckCircle2, 
   X, 
   Activity,
-  AlertTriangle
+  AlertTriangle,
+  Sparkles
 } from 'lucide-react';
 import { llmGateway } from '../../ai-services/llm/LLMGateway';
 
@@ -36,9 +37,9 @@ export const SihArchitectureModal: React.FC<SihArchitectureModalProps> = ({ isOp
             </div>
             <div>
               <h3 className="font-extrabold text-base text-slate-900 leading-tight">
-                Agentic Orchestration & Safety Architecture
+                How CarePrep Works — System Architecture
               </h3>
-              <p className="text-xs text-slate-500">Technical System Hierarchy & Runtime Boundaries</p>
+              <p className="text-xs text-slate-500">Gemini Understanding • Deterministic Safety • Physician Review</p>
             </div>
           </div>
           <button
@@ -51,20 +52,20 @@ export const SihArchitectureModal: React.FC<SihArchitectureModalProps> = ({ isOp
 
         {/* Content Body */}
         <div className="p-6 space-y-6 overflow-y-auto">
-          {/* Provider Status Live Badge */}
-          <div className="p-3.5 rounded-2xl bg-slate-900 text-slate-100 flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-              <div>
-                <div className="text-xs font-bold text-slate-200">Live AI Provider Runtime State:</div>
-                <div className="text-[11px] text-slate-400">
-                  {providerStatus.statusLabel} ({providerStatus.providerName})
-                </div>
+          {/* Core Formula Summary */}
+          <div className="p-4 rounded-2xl bg-slate-900 text-slate-200 text-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className={`w-2.5 h-2.5 rounded-full ${providerStatus.isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                <span className="font-bold text-slate-100">Live AI Runtime: {providerStatus.statusLabel} ({providerStatus.modelName})</span>
               </div>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                Session Requests: {providerStatus.totalRequestsThisSession}/{providerStatus.maxRequestsLimit}
+              </span>
             </div>
-            <span className="text-[10px] font-mono px-2.5 py-1 rounded bg-slate-800 text-emerald-300 border border-slate-700">
-              Session Limit: {providerStatus.totalRequestsThisSession}/{providerStatus.maxRequestsLimit}
-            </span>
+            <p className="text-[11px] text-slate-300 leading-relaxed">
+              &ldquo;Gemini assists with language understanding. The safety controller independently screens for prototype red flags. The physician reviews and confirms the final clinical information.&rdquo;
+            </p>
           </div>
 
           {/* Architecture Tree Diagram */}
@@ -73,56 +74,36 @@ export const SihArchitectureModal: React.FC<SihArchitectureModalProps> = ({ isOp
             <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-sm flex items-center justify-between">
               <div className="flex items-center gap-2 font-bold text-slate-800">
                 <Mic className="w-4 h-4 text-emerald-600" />
-                Patient Input Layer (Voice, Typed Text, Touch Chips in EN / HI / TA)
+                <span>1. Patient Interaction Layer</span>
               </div>
-              <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono">Web Speech / Natural Text</span>
+              <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono">Voice / Text / Touch in EN / HI / TA</span>
             </div>
 
             <div className="flex justify-center -my-2 text-slate-400">
-              <ArrowDown className="w-4 h-4 animate-bounce" />
+              <ArrowDown className="w-4 h-4" />
             </div>
 
-            {/* Level 2: Conversation & NLP Gateway */}
-            <div className="p-3.5 rounded-xl bg-indigo-50/80 border border-indigo-200 shadow-sm space-y-2">
-              <div className="flex items-center justify-between font-bold text-indigo-900">
+            {/* Level 2: Gemini Understanding */}
+            <div className="p-3.5 rounded-xl bg-emerald-50/80 border border-emerald-200 shadow-sm space-y-1.5">
+              <div className="flex items-center justify-between font-bold text-emerald-950">
                 <span className="flex items-center gap-2">
-                  <Cpu className="w-4 h-4 text-indigo-600" />
-                  Conversation Agent & LLM Gateway
+                  <Sparkles className="w-4 h-4 text-emerald-600" />
+                  <span>2. Gemini 2.5 Flash (Conversation Understanding)</span>
                 </span>
-                <span className="text-[10px] bg-indigo-200/80 text-indigo-800 px-2 py-0.5 rounded font-mono">
+                <span className="text-[10px] bg-emerald-200/80 text-emerald-900 px-2 py-0.5 rounded font-mono">
                   Schema Validator + Grounding Guard
                 </span>
               </div>
-              <p className="text-[11px] text-indigo-800 leading-normal">
-                Prompt injection defense fence; extracts symptoms, duration, location. Defaults unstated parameters to "Not provided." Pluggable remote LLM interface with deterministic NLP fallback.
+              <p className="text-[11px] text-emerald-900 leading-normal">
+                Interprets natural language, extracts symptoms (onset, character, aggravating factors), detects missing SOCRATES fields. If offline, local deterministic NLP seamlessly falls back.
               </p>
             </div>
 
             <div className="flex justify-center -my-2 text-slate-400">
-              <ArrowDown className="w-4 h-4 animate-bounce" />
+              <ArrowDown className="w-4 h-4" />
             </div>
 
-            {/* Level 3: Deterministic Safety Authority */}
-            <div className="p-3.5 rounded-xl bg-rose-50/80 border border-rose-200 shadow-sm space-y-1.5">
-              <div className="flex items-center justify-between font-bold text-rose-900">
-                <span className="flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-rose-600" />
-                  Deterministic Safety Controller (Authoritative Red-Flag Authority)
-                </span>
-                <span className="text-[10px] bg-rose-200 text-rose-800 px-2 py-0.5 rounded font-mono font-bold">
-                  RED Overrides LLM
-                </span>
-              </div>
-              <p className="text-[11px] text-rose-800 leading-normal">
-                Screens against hardcoded emergency rules. If potential life-threat criteria trigger, immediately asserts RED Emergency Triage. LLM output cannot downgrade or override this state.
-              </p>
-            </div>
-
-            <div className="flex justify-center -my-2 text-slate-400">
-              <ArrowDown className="w-4 h-4 animate-bounce" />
-            </div>
-
-            {/* Level 4: Specialized Orchestrated Agents Grid */}
+            {/* Level 3: Document, AYUSH & Evidence */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
               <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-sm">
                 <div className="font-bold text-slate-800 text-xs flex items-center gap-1.5 mb-1">
@@ -136,49 +117,78 @@ export const SihArchitectureModal: React.FC<SihArchitectureModalProps> = ({ isOp
 
               <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-sm">
                 <div className="font-bold text-slate-800 text-xs flex items-center gap-1.5 mb-1">
-                  <Activity className="w-3.5 h-3.5 text-emerald-600" />
+                  <Activity className="w-3.5 h-3.5 text-teal-600" />
                   AYUSH Agent
                 </div>
                 <p className="text-[10px] text-slate-600">
-                  Dashavidha Pariksha questionnaire for patient-reported constitutional indicators.
+                  Dashavidha Pariksha constitutional parameters (Patient-reported indicators).
                 </p>
               </div>
 
               <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-sm">
                 <div className="font-bold text-slate-800 text-xs flex items-center gap-1.5 mb-1">
-                  <Database className="w-3.5 h-3.5 text-purple-600" />
+                  <Database className="w-3.5 h-3.5 text-indigo-600" />
                   Evidence Layer
                 </div>
                 <p className="text-[10px] text-slate-600">
-                  Multi-modal provenance linking each claim to audio, text snippet, or document page.
+                  Links 100% of extracted entities back to verbatim quotes &amp; document snippets.
                 </p>
               </div>
             </div>
 
             <div className="flex justify-center -my-2 text-slate-400">
-              <ArrowDown className="w-4 h-4 animate-bounce" />
+              <ArrowDown className="w-4 h-4" />
             </div>
 
-            {/* Level 5: Summary & Review Console */}
-            <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 shadow-sm flex items-center justify-between">
-              <div className="flex items-center gap-2 font-bold text-emerald-900">
-                <Stethoscope className="w-4 h-4 text-emerald-600" />
-                Summary Agent → Physician Review Console (Version 1 Preserved, Version 2 Clinician Authored)
+            {/* Level 4: Deterministic Safety Controller */}
+            <div className="p-3.5 rounded-xl bg-rose-50/80 border border-rose-200 shadow-sm space-y-1.5">
+              <div className="flex items-center justify-between font-bold text-rose-950">
+                <span className="flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-rose-600" />
+                  <span>4. Deterministic Safety Controller</span>
+                </span>
+                <span className="text-[10px] bg-rose-200 text-rose-900 px-2 py-0.5 rounded font-mono font-bold">
+                  RED State Cannot Be Downgraded
+                </span>
               </div>
-              <span className="text-[10px] bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded font-mono font-bold">
-                Doctor Decides
+              <p className="text-[11px] text-rose-900 leading-normal">
+                The safety controller independently screens patient inputs for prototype red flags. A triggered RED state cannot be downgraded by Gemini.
+              </p>
+            </div>
+
+            <div className="flex justify-center -my-2 text-slate-400">
+              <ArrowDown className="w-4 h-4" />
+            </div>
+
+            {/* Level 5: Doctor Review Console */}
+            <div className="p-3.5 rounded-xl bg-slate-900 text-white shadow-sm flex items-center justify-between">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2 font-bold text-xs">
+                  <Stethoscope className="w-4 h-4 text-emerald-400" />
+                  <span>5. Mandatory Physician Review &amp; Confirmation</span>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Doctor edits, confirms, or rejects AI-drafted intake. Clinician is the final clinical authority.
+                </p>
+              </div>
+              <span className="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-800 px-2 py-0.5 rounded font-mono">
+                Final Authority
               </span>
             </div>
           </div>
+        </div>
 
-          {/* Safety Critical Note Alert */}
-          <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-start gap-2.5">
-            <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-            <div>
-              <strong className="block mb-0.5">Deterministic Safety Guarantee:</strong>
-              Safety-critical screening remains completely deterministic and independent of generative model outputs. Prototype emergency rules are software-tested; not clinically validated.
-            </div>
-          </div>
+        {/* Footer */}
+        <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+          <span className="text-[11px] text-slate-500 font-medium">
+            CarePrep SIH26047 • Transparent Healthcare AI Architecture
+          </span>
+          <button
+            onClick={onClose}
+            className="px-4 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs shadow-xs transition-colors"
+          >
+            Close
+          </button>
         </div>
       </div>
     </div>
