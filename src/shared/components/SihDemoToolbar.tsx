@@ -1,0 +1,152 @@
+import React, { useState } from 'react';
+import { 
+  Sparkles, 
+  ShieldAlert, 
+  FileText, 
+  Activity, 
+  HelpCircle, 
+  Layers, 
+  CheckCircle2, 
+  ChevronRight,
+  Play
+} from 'lucide-react';
+import { DEMO_SCENARIOS, DemoScenario } from '../data/demoScenarios';
+import { localStore } from '../../backend/storage/localStore';
+import { SihWhyThisMattersModal } from './SihWhyThisMattersModal';
+import { SihArchitectureModal } from './SihArchitectureModal';
+
+interface SihDemoToolbarProps {
+  onLoadScenario: (scenarioId: 'DEMO_A' | 'DEMO_B' | 'DEMO_C' | 'DEMO_D', targetScreen: 'patient' | 'doctor' | 'emergency') => void;
+  activeScreen?: string;
+}
+
+export const SihDemoToolbar: React.FC<SihDemoToolbarProps> = ({ onLoadScenario, activeScreen }) => {
+  const [isWhyModalOpen, setIsWhyModalOpen] = useState(false);
+  const [isArchModalOpen, setIsArchModalOpen] = useState(false);
+  const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
+
+  const handleSelect = (scenarioId: 'DEMO_A' | 'DEMO_B' | 'DEMO_C' | 'DEMO_D', targetScreen: 'patient' | 'doctor' | 'emergency') => {
+    setActiveScenarioId(scenarioId);
+    const scenario = DEMO_SCENARIOS[scenarioId];
+    if (scenario) {
+      // Save patient and case in localStore
+      localStore.savePatient(scenario.patient);
+      localStore.saveCase(scenario.caseRecord);
+      scenario.documents.forEach(doc => {
+        localStore.saveDocument(doc);
+      });
+      // Generate / save summary
+      const savedSummary = localStore.getSummaryByCaseId(scenario.caseRecord.caseId);
+      if (!savedSummary) {
+        localStore.saveCase(scenario.caseRecord);
+      }
+    }
+    onLoadScenario(scenarioId, targetScreen);
+  };
+
+  return (
+    <>
+      <div className="bg-slate-900 text-white border-b border-slate-800 px-3 py-2 text-xs select-none sticky top-0 z-40 shadow-md">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
+          {/* Brand Tag & Mode Identifier */}
+          <div className="flex items-center gap-2">
+            <span className="flex items-center gap-1.5 font-extrabold uppercase tracking-wider text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+              SIH26047 DEMO MODE
+            </span>
+            <span className="text-[11px] text-slate-400 hidden lg:inline font-medium">
+              One-Click Judge Scenario Presets:
+            </span>
+          </div>
+
+          {/* Quick Scenario Buttons */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {/* Demo A: Normal */}
+            <button
+              onClick={() => handleSelect('DEMO_A', 'doctor')}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all border ${
+                activeScenarioId === 'DEMO_A'
+                  ? 'bg-emerald-600 text-white border-emerald-400 shadow-sm'
+                  : 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700'
+              }`}
+              title="Standard Patient (Abdominal Pain / पेट में दर्द) with SOCRATES questioning and GREEN triage."
+            >
+              <span>Demo A: Normal (Hindi/EN)</span>
+            </button>
+
+            {/* Demo B: Emergency */}
+            <button
+              onClick={() => handleSelect('DEMO_B', 'doctor')}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all border ${
+                activeScenarioId === 'DEMO_B'
+                  ? 'bg-rose-600 text-white border-rose-400 shadow-sm'
+                  : 'bg-rose-950/60 text-rose-300 border-rose-800/80 hover:bg-rose-900/80'
+              }`}
+              title="Emergency Red-Flag case (Chest pain + dyspnea) with immediate deterministic triage routing."
+            >
+              <ShieldAlert className="w-3 h-3 text-rose-400" />
+              <span>Demo B: Red Flag (Emergency)</span>
+            </button>
+
+            {/* Demo C: Document-Heavy */}
+            <button
+              onClick={() => handleSelect('DEMO_C', 'doctor')}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all border ${
+                activeScenarioId === 'DEMO_C'
+                  ? 'bg-blue-600 text-white border-blue-400 shadow-sm'
+                  : 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700'
+              }`}
+              title="Multi-Document Patient (Prescription + High HbA1c Lab Report + Discharge Summary)."
+            >
+              <FileText className="w-3 h-3 text-blue-400" />
+              <span>Demo C: Multi-Doc & Labs</span>
+            </button>
+
+            {/* Demo D: AYUSH */}
+            <button
+              onClick={() => handleSelect('DEMO_D', 'doctor')}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all border ${
+                activeScenarioId === 'DEMO_D'
+                  ? 'bg-teal-600 text-white border-teal-400 shadow-sm'
+                  : 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700'
+              }`}
+              title="AYUSH intake with Dashavidha Pariksha constitutional indicators."
+            >
+              <Activity className="w-3 h-3 text-teal-400" />
+              <span>Demo D: AYUSH Intake</span>
+            </button>
+          </div>
+
+          {/* Info Modals Trigger Buttons */}
+          <div className="flex items-center gap-1.5 border-l border-slate-700 pl-2">
+            <button
+              onClick={() => setIsWhyModalOpen(true)}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium border border-slate-700 transition-colors"
+            >
+              <HelpCircle className="w-3 h-3 text-emerald-400" />
+              <span>Why This Matters</span>
+            </button>
+
+            <button
+              onClick={() => setIsArchModalOpen(true)}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium border border-slate-700 transition-colors"
+            >
+              <Layers className="w-3 h-3 text-indigo-400" />
+              <span>Architecture & AI</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Modals */}
+      <SihWhyThisMattersModal 
+        isOpen={isWhyModalOpen} 
+        onClose={() => setIsWhyModalOpen(false)} 
+      />
+      <SihArchitectureModal 
+        isOpen={isArchModalOpen} 
+        onClose={() => setIsArchModalOpen(false)} 
+      />
+    </>
+  );
+};
