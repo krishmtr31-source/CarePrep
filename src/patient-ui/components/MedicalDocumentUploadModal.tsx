@@ -290,7 +290,19 @@ export const MedicalDocumentUploadModal: React.FC<MedicalDocumentUploadModalProp
   const handleLabFieldChange = (index: number, field: string, val: string) => {
     if (!extractedData) return;
     const updated = [...extractedData.labResults];
-    updated[index] = { ...updated[index], [field]: val };
+    if (field === 'referenceRange') {
+      updated[index] = {
+        ...updated[index],
+        referenceRange: val,
+        sourceReferenceRange: {
+          ...(updated[index].sourceReferenceRange || {}),
+          raw: val,
+          hasSourceRange: Boolean(val.trim())
+        }
+      };
+    } else {
+      updated[index] = { ...updated[index], [field]: val };
+    }
     setExtractedData({ ...extractedData, labResults: updated });
   };
 
@@ -1033,13 +1045,9 @@ export const MedicalDocumentUploadModal: React.FC<MedicalDocumentUploadModalProp
                                         <td className="p-2">
                                           <input
                                             type="text"
-                                            value={lab.sourceReferenceRange.raw}
+                                            value={lab.sourceReferenceRange?.raw || lab.referenceRange || ''}
                                             placeholder="Reference range"
-                                            onChange={e => {
-                                              const updated = [...extractedData.labResults];
-                                              updated[idx].sourceReferenceRange.raw = e.target.value;
-                                              setExtractedData({ ...extractedData, labResults: updated });
-                                            }}
+                                            onChange={e => handleLabFieldChange(idx, 'referenceRange', e.target.value)}
                                             className="w-full px-2 py-1 bg-transparent border-b border-transparent hover:border-slate-300 focus:border-emerald-500 focus:bg-white rounded text-slate-600 font-mono text-[11px]"
                                           />
                                         </td>

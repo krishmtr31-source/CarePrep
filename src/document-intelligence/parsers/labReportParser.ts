@@ -16,70 +16,130 @@ export const UNIT_PATTERN = '(?:%|mg\\/dL|g\\/dL|gm\\/dL|gm%|mg%|mmol\\/L|umol\\
 /**
  * Extracts and cleans reference range into a standard numerical interval.
  * Returns { hasRange: boolean, raw: string, min?: number, max?: number }
+ * Strictly preserves authentic OCR report text while computing numeric boundaries.
  */
-export function extractReferenceRangeDetails(str: string): {
+export function extractReferenceRangeDetails(
+  str: string,
+  patientGender?: string
+): {
   hasRange: boolean;
+  hasSourceRange: boolean;
   raw: string;
   min?: number;
   max?: number;
 } {
-  if (!str) return { hasRange: false, raw: 'Not specified in report' };
+  if (!str) return { hasRange: false, hasSourceRange: false, raw: 'Not specified in report' };
 
-  let clean = str
-    .replace(/^[\(\[\{]\s*(?:ref(?:\.|erence)?(?:\s*range|\s*interval)?|normal(?:\s*range)?|bio(?:\.|logical)?\s*ref(?:\.|erence)?(?:\s*range|\s*interval)?)?[:\s]*/i, '')
-    .replace(/[\)\]\}]$/, '')
-    .replace(/^(?:ref(?:\.|erence)?(?:\s*range|\s*interval)?|normal(?:\s*range)?|bio(?:\.|logical)?\s*ref(?:\.|erence)?(?:\s*range|\s*interval)?)?[:\s]*/i, '')
+  let trimmed = str.trim();
+  if (
+    !trimmed || 
+    /^(?:not\s*specified|none|nil|n\/a|--|\?)$/i.test(trimmed) ||
+    /^(?:normal\s*range|reference\s*interval|biological\s*ref|bio\s*ref|ref\s*range)$/i.test(trimmed)
+  ) {
+    return { hasRange: false, hasSourceRange: false, raw: 'Not specified in report' };
+  }
+
+  // 1. Remove surrounding enclosing parentheses / brackets / braces: e.g. "( 70.0 - 100.0 mg/dL )" -> "70.0 - 100.0 mg/dL"
+  trimmed = trimmed.replace(/^[\(\[\{]\s*(.*?)\s*[\)\]\}]$/, '$1').trim();
+
+  // 2. Identify display string (preserve authentic range from report, clean prefix labels)
+  let displayRaw = trimmed
+    .replace(/^(?:(?:bio(?:\.|logical)?\s*)?ref(?:\.|erence)?(?:\s*range|\s*interval)?|normal(?:\s*range|\s*interval)?|reference\s*interval)[:\s\-]+/i, '')
     .trim();
 
-  // Strip unit from end if present
-  clean = clean.replace(new RegExp(`\\s*${UNIT_PATTERN}\\s*$`, 'i'), '').trim();
+  if (!displayRaw) displayRaw = trimmed;
 
-  // Pattern 1: Numerical interval with hyphen, dash, tilde or "to" (e.g. "70.0 - 100.0", "70 to 100", "0.7–1.3", "13.0 - 17.0")
-  const intervalMatch = clean.match(/(?:(?:male|female|adults?|normal)[:\s]*)?([<>]?\s*\d{1,3}(?:[0-9,])*(?:\.\d+)?|\d+(?:\.\d+)?)\s*(?:[-–—~]|to)\s*(\d{1,3}(?:[0-9,])*(?:\.\d+)?|\d+(?:\.\d+)?)/i);
+  // 3. Normalize common OCR character substitutions for numeric computation
+  // e.g. letter O/o -> 0, letter l/I/| -> 1 when adjacent to digits or decimal points
+  let numericText = displayRaw
+    .replace(/(?<=\d|\.)[oO](?=\d|\.|\b)/g, '0')
+    .replace(/(?<=\b)[oO](?=\d|\.)/g, '0')
+    .replace(/(?<=\d|\.)[lI|](?=\d|\.|\b)/g, '1')
+    .replace(/(?<=\b)[lI|](?=\d|\.)/g, '1')
+    .replace(/,/g, ''); // strip thousands commas for math
+
+  const isFemale = Boolean(patientGender && /^(?:female|f)\b/i.test(patientGender));
+  const isMale = Boolean(patientGender && /^(?:male|m)\b/i.test(patientGender));
+
+  // Check for gender-specific intervals if present in the text (e.g. "Male: 0.7 - 1.3, Female: 0.6 - 1.1")
+  if (isFemale) {
+    const femaleMatch = numericText.match(/(?:female|women|f)[:\s\-]*([<>]?\s*\d+(?:\.\d+)?)\s*(?:[-–—~]|to)\s*(\d+(?:\.\d+)?)/i);
+    if (femaleMatch) {
+      const min = parseFloat(femaleMatch[1].replace(/[^0-9.]/g, ''));
+      const max = parseFloat(femaleMatch[2].replace(/[^0-9.]/g, ''));
+      if (!isNaN(min) && !isNaN(max)) {
+        return { hasRange: true, hasSourceRange: true, raw: displayRaw, min, max };
+      }
+    }
+  } else if (isMale) {
+    const maleMatch = numericText.match(/(?:male|men|m)[:\s\-]*([<>]?\s*\d+(?:\.\d+)?)\s*(?:[-–—~]|to)\s*(\d+(?:\.\d+)?)/i);
+    if (maleMatch) {
+      const min = parseFloat(maleMatch[1].replace(/[^0-9.]/g, ''));
+      const max = parseFloat(maleMatch[2].replace(/[^0-9.]/g, ''));
+      if (!isNaN(min) && !isNaN(max)) {
+        return { hasRange: true, hasSourceRange: true, raw: displayRaw, min, max };
+      }
+    }
+  }
+
+  // Pattern 1: Numerical interval with hyphen, dash, tilde, colon or "to" (e.g. "70.0 - 100.0", "70 to 100", "0.7–1.3", "13.0 - 17.0")
+  const intervalMatch = numericText.match(/([<>]?\s*\d+(?:\.\d+)?)\s*(?:[-–—~:]|to)\s*(\d+(?:\.\d+)?)/i);
   if (intervalMatch) {
-    const minStr = intervalMatch[1].replace(/[^0-9.]/g, '').trim();
-    const maxStr = intervalMatch[2].replace(/[^0-9.]/g, '').trim();
+    const minStr = intervalMatch[1].replace(/[^0-9.]/g, '');
+    const maxStr = intervalMatch[2].replace(/[^0-9.]/g, '');
     const min = parseFloat(minStr);
     const max = parseFloat(maxStr);
     if (!isNaN(min) && !isNaN(max)) {
       return {
         hasRange: true,
-        raw: `${minStr} - ${maxStr}`,
+        hasSourceRange: true,
+        raw: displayRaw,
         min,
         max
       };
     }
   }
 
-  // Pattern 2: Inequality Less Than (e.g. "< 200", "<= 140", "Up to 140", "Upto 140", "Desirable: < 200")
-  const lessMatch = clean.match(/(?:<|<=|less\s+than|up\s*to|upto)\s*(\d{1,3}(?:[0-9,])*(?:\.\d+)?|\d+(?:\.\d+)?)/i);
+  // Pattern 2: Inequality Less Than (e.g. "< 200", "<= 140", "Up to 140", "Upto 140", "Desirable: < 200", "Desirable <200")
+  const lessMatch = numericText.match(/(?:<|<=|less\s+than|up\s*to|upto)\s*(\d+(?:\.\d+)?)/i);
   if (lessMatch) {
-    const maxStr = lessMatch[1].replace(/[^0-9.]/g, '').trim();
+    const maxStr = lessMatch[1].replace(/[^0-9.]/g, '');
     const max = parseFloat(maxStr);
     if (!isNaN(max)) {
       return {
         hasRange: true,
-        raw: `< ${maxStr}`,
+        hasSourceRange: true,
+        raw: displayRaw,
         max
       };
     }
   }
 
-  // Pattern 3: Inequality Greater Than (e.g. "> 40", ">= 60", "Greater than 50")
-  const greaterMatch = clean.match(/(?:>|>=|greater\s+than)\s*(\d{1,3}(?:[0-9,])*(?:\.\d+)?|\d+(?:\.\d+)?)/i);
+  // Pattern 3: Inequality Greater Than (e.g. "> 40", ">= 60", "Greater than 50", "More than 60")
+  const greaterMatch = numericText.match(/(?:>|>=|greater\s+than|more\s+than)\s*(\d+(?:\.\d+)?)/i);
   if (greaterMatch) {
-    const minStr = greaterMatch[1].replace(/[^0-9.]/g, '').trim();
+    const minStr = greaterMatch[1].replace(/[^0-9.]/g, '');
     const min = parseFloat(minStr);
     if (!isNaN(min)) {
       return {
         hasRange: true,
-        raw: `> ${minStr}`,
+        hasSourceRange: true,
+        raw: displayRaw,
         min
       };
     }
   }
 
-  return { hasRange: false, raw: 'Not specified in report' };
+  // Pattern 4: Descriptive qualitative standard findings
+  if (/^(?:normal|negative|non-reactive|nonreactive|absent|not\s+detected|trace)/i.test(displayRaw)) {
+    return {
+      hasRange: true,
+      hasSourceRange: true,
+      raw: displayRaw
+    };
+  }
+
+  return { hasRange: false, hasSourceRange: false, raw: 'Not specified in report' };
 }
 
 /**
@@ -88,7 +148,7 @@ export function extractReferenceRangeDetails(str: string): {
 export function cleanTestName(name: string): string {
   let cleaned = name
     .replace(/^[-*#•·▪■\d.)\s]+/, '') // Strip leading numbering e.g. "1.", "01.", "1)"
-    .replace(/^(?:test(?:\s*name)?|investigation|parameter|analyte)[:\s]+/i, '') // Strip label prefixes
+    .replace(/^(?:test(?:\s*name)?|investigation(?:\s*name)?|parameter|analyte)[:\s]+/i, '') // Strip label prefixes
     .replace(/\.{2,}/g, ' ') // Strip dot leaders e.g. "Hemoglobin ........"
     .replace(/[|:;]+$/g, '') // Strip trailing punctuation
     .replace(/^[|:;]+/g, '')
@@ -172,7 +232,7 @@ export function parseLabReportText(
   const seenTests = new Set<string>();
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+    let line = lines[i];
 
     // Skip table header rows, divider rules, and metadata / footer notes
     if (
@@ -183,6 +243,52 @@ export function parseLabReportText(
       line.startsWith('___')
     ) {
       continue;
+    }
+
+    // Check if this line is purely a reference range header or line
+    const isPureRefRangeLabel = /^(?:(?:bio(?:\.|logical)?\s*)?ref(?:\.|erence)?(?:\s*range|\s*interval)?|normal(?:\s*range|\s*interval)?|reference\s*interval)[:\s\-]+/i.test(line);
+    const pureIntervalPattern = /^[\(\[]?\s*(?:(?:male|female|adults?|normal)[:\s]*)?([<>]?\s*\d+(?:\.\d+)?)\s*(?:[-–—~]|to)\s*(\d+(?:\.\d+)?)(?:\s*[A-Za-z/%µ]+)?\s*[\)\]]?$/i;
+    const pureInequalityPattern = /^[\(\[]?\s*[<>]=?\s*\d+(?:\.\d+)?(?:\s*[A-Za-z/%µ]+)?\s*[\)\]]?$/i;
+    const isPureRangeValue = pureIntervalPattern.test(line) || pureInequalityPattern.test(line);
+
+    if (isPureRefRangeLabel || isPureRangeValue) {
+      // If the previous test has no reference range, bind this line to it!
+      if (labResults.length > 0) {
+        const lastLab = labResults[labResults.length - 1];
+        if (!lastLab.sourceReferenceRange.hasSourceRange || lastLab.sourceReferenceRange.raw === 'Not specified in report') {
+          const rangeDetails = extractReferenceRangeDetails(line, patientGender);
+          if (rangeDetails.hasRange) {
+            lastLab.sourceReferenceRange = rangeDetails;
+            lastLab.referenceRange = rangeDetails.raw;
+            if (lastLab.numericValue !== undefined) {
+              if (rangeDetails.max !== undefined && lastLab.numericValue > rangeDetails.max) {
+                lastLab.flag = 'HIGH';
+                lastLab.isAbnormal = true;
+                lastLab.status = 'high';
+              } else if (rangeDetails.min !== undefined && lastLab.numericValue < rangeDetails.min) {
+                lastLab.flag = 'LOW';
+                lastLab.isAbnormal = true;
+                lastLab.status = 'low';
+              } else {
+                lastLab.flag = 'NORMAL';
+                lastLab.isAbnormal = false;
+                lastLab.status = 'normal';
+              }
+            }
+          }
+        }
+      }
+      continue;
+    }
+
+    // Check if test name is on line `i` and numeric value / range is on line `i + 1`
+    let mergedNextLine = false;
+    if (!/\d/.test(line) && i + 1 < lines.length && /\d/.test(lines[i + 1])) {
+      const candidateName = cleanTestName(line);
+      if (candidateName.length >= 2 && candidateName.length <= 60 && !/^(?:doctor|date|patient|report|result|unit)/i.test(candidateName)) {
+        line = `${line}    ${lines[i + 1]}`;
+        mergedNextLine = true;
+      }
     }
 
     // Normalization: convert pipes and tabs to multi-space
@@ -201,7 +307,7 @@ export function parseLabReportText(
 
       for (let cIdx = 0; cIdx < rawCols.length; cIdx++) {
         const col = rawCols[cIdx];
-        const rangeCheck = extractReferenceRangeDetails(col);
+        const rangeCheck = extractReferenceRangeDetails(col, patientGender);
 
         if (rangeCheck.hasRange) {
           refRangeStr = col;
@@ -253,12 +359,14 @@ export function parseLabReportText(
           docId,
           docName,
           extractionMethod,
-          labResults.length + 1
+          labResults.length + 1,
+          patientGender
         );
 
         if (parsedLab && !seenTests.has(parsedLab.testName.toLowerCase())) {
           seenTests.add(parsedLab.testName.toLowerCase());
           labResults.push(parsedLab);
+          if (mergedNextLine) i++;
           continue;
         }
       }
@@ -275,24 +383,35 @@ export function parseLabReportText(
       const rawName = m[1];
       const rawVal = m[2];
       const rawUnit = m[3] || '';
-      const remainder = m[4] || '';
+      const remainder = (m[4] || '').trim();
+
+      let explicitFlag = '';
+      let rangeCandidate = remainder;
+
+      const flagMatch = remainder.match(/\b(HIGH|LOW|NORMAL|ABNORMAL|CRITICAL|BORDERLINE|DESIRABLE)\b/i);
+      if (flagMatch) {
+        explicitFlag = flagMatch[1].toUpperCase();
+        rangeCandidate = remainder.replace(new RegExp(`\\b${flagMatch[1]}\\b`, 'i'), '').trim();
+      }
 
       const parsedLab = evaluateAndBuildLabResult(
         rawName,
         rawVal,
         rawUnit,
-        remainder,
-        '',
+        rangeCandidate,
+        explicitFlag,
         line,
         docId,
         docName,
         extractionMethod,
-        labResults.length + 1
+        labResults.length + 1,
+        patientGender
       );
 
       if (parsedLab && !seenTests.has(parsedLab.testName.toLowerCase())) {
         seenTests.add(parsedLab.testName.toLowerCase());
         labResults.push(parsedLab);
+        if (mergedNextLine) i++;
       }
     }
   }
@@ -319,7 +438,8 @@ function evaluateAndBuildLabResult(
   docId: string,
   docName: string,
   extractionMethod: 'PDF_TEXT' | 'OCR' | 'SAMPLE',
-  index: number
+  index: number,
+  patientGender?: string
 ): ExtractedLabResult | null {
   const cleanName = cleanTestName(testNameCandidate);
 
@@ -329,7 +449,7 @@ function evaluateAndBuildLabResult(
   }
 
   // Reject non-test header/footer labels
-  if (/^(?:date|doctor|verified\s+by|signature|page|note|ref\s+by|sample|barcode|interpretation|method|result|investigation|unit|reference)/i.test(cleanName)) {
+  if (/^(?:date|doctor|verified\s+by|signature|page|note|ref\s+by|sample|barcode|interpretation|method|result|investigation|unit|reference|biological|normal\s*range|clinical|specimen|parameter|test\s*name)/i.test(cleanName)) {
     return null;
   }
 
@@ -338,7 +458,7 @@ function evaluateAndBuildLabResult(
   if (isNaN(numericVal)) return null;
 
   // Extract reference range details
-  const refDetails = extractReferenceRangeDetails(rawRefRangeCandidate);
+  const refDetails = extractReferenceRangeDetails(rawRefRangeCandidate, patientGender);
   const minVal = refDetails.min;
   const maxVal = refDetails.max;
   const hasSourceRange = refDetails.hasRange;
