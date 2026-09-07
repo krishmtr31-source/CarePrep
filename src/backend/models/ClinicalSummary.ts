@@ -123,7 +123,7 @@ const ClinicalSummarySchema: Schema = new Schema(
 ClinicalSummarySchema.index({ patientId: 1, createdAt: -1 });
 ClinicalSummarySchema.index({ patientId: 1, sourceDataHash: 1 });
 
-export const ClinicalSummary = mongoose.model<IClinicalSummaryDocument>(
-  'ClinicalSummary',
-  ClinicalSummarySchema
-);
+export const ClinicalSummary =
+  (mongoose.models.ClinicalSummary as mongoose.Model<IClinicalSummaryDocument>) ||
+  mongoose.model<IClinicalSummaryDocument>('ClinicalSummary', ClinicalSummarySchema);
+
