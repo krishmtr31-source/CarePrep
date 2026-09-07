@@ -76,11 +76,13 @@ export interface PatientCaseRecord {
   caseId: string;
   patientId: string;
   mode: IntakeMode;
-  status: 'IN_PROGRESS' | 'COMPLETED' | 'RED_FLAG_TRIAGE' | 'REVIEWED_BY_DOCTOR';
+  status: 'IN_PROGRESS' | 'SUBMITTED_TO_DOCTOR' | 'COMPLETED' | 'RED_FLAG_TRIAGE' | 'REVIEWED_BY_DOCTOR';
   chiefComplaint: string;
   answers: IntakeAnswer[];
   startedAt: string;
   completedAt?: string;
+  tokenNumber?: string;
+  queuePosition?: number;
   redFlagsDetected: string[];
   language: 'en' | 'hi' | 'ta';
   doctorReview?: {

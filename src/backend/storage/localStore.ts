@@ -214,9 +214,9 @@ class LocalDatabaseStore {
   }
 
   public getCurrentPatient(): PatientIdentity | null {
-    if (!this.isBrowser) return this.memoryPatients.find(p => p.id === this.currentPatientId) || this.memoryPatients[0] || null;
+    if (!this.isBrowser) return this.memoryPatients.find(p => p.id === this.currentPatientId) || null;
     const id = localStorage.getItem(STORAGE_KEYS.CURRENT_PATIENT_ID);
-    if (!id) return this.getPatients()[0] || null;
+    if (!id) return null;
     return this.getPatients().find(p => p.id === id) || null;
   }
 
@@ -265,6 +265,7 @@ class LocalDatabaseStore {
     if (this.isBrowser) {
       localStorage.setItem(STORAGE_KEYS.CASES, JSON.stringify(this.memoryCases));
       localStorage.setItem(STORAGE_KEYS.CURRENT_CASE_ID, caseRecord.caseId);
+      window.dispatchEvent(new CustomEvent('careprep_queue_updated', { detail: { caseId: caseRecord.caseId } }));
     }
   }
 
@@ -291,15 +292,14 @@ class LocalDatabaseStore {
       ? JSON.parse(localStorage.getItem(STORAGE_KEYS.DOCUMENTS)!)
       : this.memoryDocuments;
 
-    if (caseId) {
-      const filtered = list.filter((d: ExtractedDocumentData) => d.caseId === caseId);
-      if (filtered.length > 0) return filtered;
-    }
+    let result = list;
     if (patientId) {
-      const filtered = list.filter((d: ExtractedDocumentData) => d.patientId === patientId);
-      if (filtered.length > 0) return filtered;
+      result = result.filter((d: ExtractedDocumentData) => d.patientId === patientId);
     }
-    return list;
+    if (caseId) {
+      result = result.filter((d: ExtractedDocumentData) => d.caseId === caseId);
+    }
+    return result;
   }
 
   public saveDocument(doc: ExtractedDocumentData): void {

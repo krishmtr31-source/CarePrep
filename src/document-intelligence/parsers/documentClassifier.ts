@@ -56,13 +56,23 @@ const SIGNAL_GROUPS: SignalGroup[] = [
     ],
     secondaryPatterns: [
       /\bhba1c\b/i,
-      /fasting\s+(?:plasma\s+)?glucose/i,
+      /fasting\s+(?:blood\s+|plasma\s+)?glucose/i,
       /(?:serum\s+)?creatinine/i,
-      /hemoglobin/i,
+      /\bhemoglobin\b/i,
       /\bcbc\b/i,
+      /\bwbc\b/i,
+      /\bplatelets?\b/i,
       /lipid\s+profile/i,
+      /\b(?:total\s+)?cholesterol\b/i,
+      /\btriglycerides?\b/i,
+      /\bldl\b/i,
+      /\bhdl\b/i,
+      /\balt\b|\bsgpt\b/i,
+      /\bast\b|\bsgot\b/i,
       /\bmg\/dl\b/i,
       /\bg\/dl\b/i,
+      /\bu\/l\b/i,
+      /\bcells\/[µ\u00b5\u03bc]l\b|\bcells\/ul\b/i,
       /specimen/i,
       /test\s+name/i,
       /result\s+value/i
@@ -174,8 +184,12 @@ export function classifyDocumentText(rawText: string): ClassificationResult {
 
   // Lab Report Priority: If document contains reference ranges or multiple lab test indicators, it is definitely a lab report
   const labGroup = scores.find(s => s.type === 'LAB_REPORT')!;
-  if (labGroup.strongMatches.length >= 2 || (labGroup.strongMatches.length >= 1 && labGroup.secondaryMatches.length >= 2)) {
-    const conf = Math.min(0.98, 0.75 + labGroup.strongMatches.length * 0.08);
+  if (
+    labGroup.strongMatches.length >= 2 ||
+    (labGroup.strongMatches.length >= 1 && labGroup.secondaryMatches.length >= 1) ||
+    labGroup.secondaryMatches.length >= 3
+  ) {
+    const conf = Math.min(0.98, 0.75 + labGroup.strongMatches.length * 0.08 + labGroup.secondaryMatches.length * 0.04);
     return {
       classification: 'LAB_REPORT',
       confidence: conf,

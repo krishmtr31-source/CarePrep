@@ -40,12 +40,15 @@ const COMMON_READABLE_TOKENS = new Set([
   'once', 'od', 'bd', 'tid', 'qid', 'hs', 'sos', 'oral', 'days', 'duration',
   'lab', 'laboratory', 'report', 'test', 'result', 'unit', 'reference', 'range',
   'interval', 'normal', 'high', 'low', 'abnormal', 'observed', 'value', 'specimen',
-  'blood', 'serum', 'plasma', 'glucose', 'fasting', 'hba1c', 'creatinine', 'urea',
-  'hemoglobin', 'lipid', 'cholesterol', 'triglycerides', 'bilirubin', 'sgot', 'sgpt',
+  'blood', 'serum', 'plasma', 'glucose', 'fasting', 'hba1c', 'creatinine', 'urea', 'bun',
+  'hemoglobin', 'lipid', 'cholesterol', 'triglycerides', 'bilirubin', 'sgot', 'sgpt', 'alt', 'ast',
+  'wbc', 'rbc', 'platelets', 'platelet', 'leukocyte', 'ldl', 'hdl', 'vldl', 'electrolytes',
+  'sodium', 'potassium', 'chloride', 'calcium', 'phosphorus', 'alkaline', 'phosphatase',
+  'tsh', 'thyroid', 'ferritin', 'iron', 'vitamin', 'hematocrit', 'mcv', 'mch', 'mchc',
   'discharge', 'summary', 'admission', 'course', 'final', 'condition', 'advice',
   'follow', 'up', 'review', 'pulse', 'bp', 'temperature', 'sterile', 'investigation',
   'metformin', 'atorvastatin', 'amlodipine', 'telmisartan', 'pantoprazole', 'paracetamol',
-  'ashwagandha', 'churna', 'rifaximin', 'probiotic', 'ors', 'vitamin', 'calcium'
+  'ashwagandha', 'churna', 'rifaximin', 'probiotic', 'ors', 'calcium'
 ]);
 
 /**
@@ -120,13 +123,14 @@ export function evaluateTextQuality(text: string): TextQualityResult {
 
   const symbolRatio = symbolCount / nonWhitespaceCount;
   const alphaRatio = alphabeticCount / nonWhitespaceCount;
+  const alphaNumericRatio = (alphabeticCount + numericCount) / nonWhitespaceCount;
 
-  // If symbol ratio > 35% or letters < 50%, text is heavily corrupted/encoded
-  if (symbolRatio > 0.35 || alphaRatio < 0.45) {
+  // If symbol ratio > 35% or alphanumeric characters < 50%, text is heavily corrupted/encoded
+  if (symbolRatio > 0.35 || alphaNumericRatio < 0.50) {
     return {
       isAcceptable: false,
-      score: Math.max(0.1, alphaRatio),
-      reason: `Unusually high symbol-to-letter ratio (symbols: ${Math.round(symbolRatio * 100)}%, letters: ${Math.round(alphaRatio * 100)}%)`,
+      score: Math.max(0.1, alphaNumericRatio),
+      reason: `Unusually high symbol-to-text ratio (symbols: ${Math.round(symbolRatio * 100)}%, alphanumeric: ${Math.round(alphaNumericRatio * 100)}%)`,
       validWordCount: 0,
       symbolRatio,
       hasBinaryArtifacts: false

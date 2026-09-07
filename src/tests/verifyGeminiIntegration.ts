@@ -23,10 +23,10 @@ async function runTests() {
 
   // Test 1: Gemini Provider Initialization
   const geminiProvider = new ServerGeminiProvider({
-    modelName: 'gemini-2.5-flash'
+    modelName: 'gemini-3.6-flash'
   });
   assert(geminiProvider.getProviderName() === 'GEMINI', 'Provider name must be GEMINI');
-  assert(geminiProvider.getModelName() === 'gemini-2.5-flash', 'Model name must default to gemini-2.5-flash');
+  assert(geminiProvider.getModelName() === 'gemini-3.6-flash', 'Model name must default to gemini-3.6-flash');
   console.log('[PASS] Test 1: 1. Gemini Provider Initialized (Model: ' + geminiProvider.getModelName() + ')');
   passed++;
 
@@ -307,7 +307,7 @@ async function runTests() {
   passed++;
 
   // Test 24: UI Dynamic Provider Status Correctness
-  const liveStatusGateway = new LLMGateway(new ServerGeminiProvider({ apiKey: 'test-key', modelName: 'gemini-2.5-flash' }));
+  const liveStatusGateway = new LLMGateway(new ServerGeminiProvider({ apiKey: 'test-key', modelName: 'gemini-3.6-flash' }));
   const status = liveStatusGateway.getProviderStatus();
   assert(status.statusLabel.includes('Fallback') || status.statusLabel.includes('Gemini'), 'Provider status label must be transparent');
   console.log('[PASS] Test 24: 24. UI Provider Dynamic Status Labeling: "' + status.statusLabel + '"');

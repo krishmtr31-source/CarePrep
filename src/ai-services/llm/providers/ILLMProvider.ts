@@ -1,4 +1,4 @@
-import { PatientInterpretationSchema } from '../llmTypes';
+import { PatientInterpretationSchema, DocumentInterpretationSchema } from '../llmTypes';
 
 export interface ILLMProvider {
   getProviderName(): string;
@@ -8,5 +8,11 @@ export interface ILLMProvider {
     language: 'en' | 'hi' | 'ta',
     context?: string
   ): Promise<PatientInterpretationSchema>;
+  interpretDocument?(
+    rawText: string,
+    fileName?: string,
+    fileData?: string,
+    mimeType?: string
+  ): Promise<DocumentInterpretationSchema>;
   testConnection(): Promise<boolean>;
 }

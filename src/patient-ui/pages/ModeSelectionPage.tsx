@@ -22,7 +22,7 @@ export const ModeSelectionPage: React.FC<ModeSelectionPageProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50 flex flex-col justify-between p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen flex flex-col justify-between p-4 sm:p-6 lg:p-8 relative z-10">
       <div className="max-w-3xl mx-auto w-full my-auto py-6">
         <button
           onClick={onBack}
@@ -45,12 +45,12 @@ export const ModeSelectionPage: React.FC<ModeSelectionPageProps> = ({
           </p>
         </div>
 
-        {/* Mode cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        {/* Mode Cards Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           {/* General Clinical Mode */}
           <div
             onClick={() => handleStart('GENERAL_CLINICAL')}
-            className={`group cursor-pointer p-6 rounded-3xl border-2 transition-all duration-300 flex flex-col justify-between relative bg-white hover:shadow-xl ${
+            className={`group cursor-pointer p-6 rounded-3xl border-2 transition-all duration-300 flex flex-col justify-between relative bg-white/85 backdrop-blur-xl hover:shadow-xl ${
               mode === 'GENERAL_CLINICAL'
                 ? 'border-clinical-500 shadow-clinical-100 ring-2 ring-clinical-300/30'
                 : 'border-slate-200 hover:border-clinical-400'
@@ -103,7 +103,7 @@ export const ModeSelectionPage: React.FC<ModeSelectionPageProps> = ({
           {/* AYUSH Mode */}
           <div
             onClick={() => handleStart('AYUSH')}
-            className={`group cursor-pointer p-6 rounded-3xl border-2 transition-all duration-300 flex flex-col justify-between relative bg-white hover:shadow-xl ${
+            className={`group cursor-pointer p-6 rounded-3xl border-2 transition-all duration-300 flex flex-col justify-between relative bg-white/85 backdrop-blur-xl hover:shadow-xl ${
               mode === 'AYUSH'
                 ? 'border-ayush-500 shadow-ayush-100 ring-2 ring-ayush-300/30'
                 : 'border-slate-200 hover:border-ayush-400'

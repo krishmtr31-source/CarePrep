@@ -111,6 +111,8 @@ export function getConnectionStatus(): {
   stateLabel: string;
   host?: string;
   name?: string;
+  databaseName?: string;
+  error?: string;
 } {
   const states: Record<number, string> = {
     0: 'disconnected',
@@ -126,9 +128,13 @@ export function getConnectionStatus(): {
     readyState,
     stateLabel: states[readyState] || 'unknown',
     host: mongoose.connection.host,
-    name: mongoose.connection.name
+    name: mongoose.connection.name,
+    databaseName: mongoose.connection.name,
+    error: readyState === 1 ? undefined : 'MongoDB not connected'
   };
 }
+
+export const getDatabaseStatus = getConnectionStatus;
 
 // Graceful process exit handling
 process.on('SIGINT', async () => {
@@ -145,6 +151,7 @@ export default {
   connectDB,
   disconnectDB,
   getConnectionStatus,
+  getDatabaseStatus,
   getMongoUri
 };
 

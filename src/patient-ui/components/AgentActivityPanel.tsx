@@ -41,7 +41,7 @@ export const AgentActivityPanel: React.FC<AgentActivityPanelProps> = ({
             ) : (
               <Cpu className="w-3 h-3 text-amber-400" />
             )}
-            {providerStatus.isGeminiLive ? 'Gemini 2.5 Flash • Connected' : 'Deterministic Fallback Active'}
+            {providerStatus.isGeminiLive ? `Gemini ${providerStatus.modelName || '3.6 Flash'} • Connected` : 'Deterministic Fallback Active'}
           </span>
 
           {state && (

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useLanguage } from '../../shared/contexts/LanguageContext';
 import { useIntake } from '../../shared/contexts/IntakeContext';
 import { PatientIdentity } from '../../data-models/patient';
-import { User, CreditCard, Phone, MapPin, Sparkles, ArrowRight, ArrowLeft } from 'lucide-react';
+import { User, CreditCard, Sparkles, ArrowRight, ArrowLeft, AlertCircle } from 'lucide-react';
 
 interface PatientIdentityPageProps {
   onContinue: () => void;
@@ -18,13 +18,22 @@ export const PatientIdentityPage: React.FC<PatientIdentityPageProps> = ({
 
   const [formData, setFormData] = useState<Partial<PatientIdentity>>({
     fullName: patient?.fullName || '',
-    age: patient?.age || 35,
     gender: patient?.gender || 'male',
     phoneNumber: patient?.phoneNumber || '',
     abhaId: patient?.abhaId || '',
     city: patient?.city || '',
     emergencyContactPhone: patient?.emergencyContactPhone || ''
   });
+
+  // String state for age field to allow seamless clearing, editing, and backspacing
+  const [ageInput, setAgeInput] = useState<string>(() => {
+    if (patient?.age !== undefined && patient?.age !== null) {
+      return String(patient.age);
+    }
+    return '35';
+  });
+
+  const [ageError, setAgeError] = useState<string>('');
 
   const handleGenerateDemoAbha = () => {
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
@@ -34,10 +43,23 @@ export const PatientIdentityPage: React.FC<PatientIdentityPageProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    const trimmedAge = ageInput.trim();
+    if (!trimmedAge) {
+      setAgeError('Please enter your age.');
+      return;
+    }
+
+    const numericAge = Number(trimmedAge);
+    if (isNaN(numericAge) || numericAge < 0 || numericAge > 120) {
+      setAgeError('Please enter a valid age between 0 and 120.');
+      return;
+    }
+
     const newPat: PatientIdentity = {
       id: patient?.id || `pat-${Date.now().toString(36)}`,
       fullName: formData.fullName?.trim() || 'Patient',
-      age: Number(formData.age) || 30,
+      age: numericAge,
       gender: (formData.gender as any) || 'other',
       phoneNumber: formData.phoneNumber?.trim() || '+91 90000 00000',
       abhaId: formData.abhaId?.trim() || undefined,
@@ -46,12 +68,13 @@ export const PatientIdentityPage: React.FC<PatientIdentityPageProps> = ({
       preferredLanguage: language,
       createdAt: patient?.createdAt || new Date().toISOString()
     };
+    
     setPatient(newPat);
     onContinue();
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50 flex flex-col justify-between p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen flex flex-col justify-between p-4 sm:p-6 lg:p-8 relative z-10">
       <div className="max-w-xl mx-auto w-full my-auto py-6">
         <button
           onClick={onBack}
@@ -74,7 +97,7 @@ export const PatientIdentityPage: React.FC<PatientIdentityPageProps> = ({
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-white p-6 sm:p-7 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+        <form onSubmit={handleSubmit} className="bg-white/90 backdrop-blur-xl p-6 sm:p-7 rounded-3xl border border-white/60 shadow-xl shadow-slate-900/10 space-y-4">
           {/* ABHA ID with generator */}
           <div>
             <div className="flex items-center justify-between mb-1">
@@ -123,13 +146,26 @@ export const PatientIdentityPage: React.FC<PatientIdentityPageProps> = ({
               </label>
               <input
                 type="number"
-                min={1}
+                min={0}
                 max={120}
-                required
-                value={formData.age || 35}
-                onChange={(e) => setFormData(prev => ({ ...prev, age: Number(e.target.value) }))}
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-clinical-500 focus:ring-2 focus:ring-clinical-100 outline-none text-sm font-medium text-slate-800"
+                value={ageInput}
+                onChange={(e) => {
+                  setAgeInput(e.target.value);
+                  if (ageError) setAgeError('');
+                }}
+                placeholder="e.g. 35"
+                className={`w-full px-4 py-2.5 rounded-xl border ${
+                  ageError 
+                    ? 'border-rose-500 focus:ring-rose-100 focus:border-rose-500' 
+                    : 'border-slate-200 focus:border-clinical-500 focus:ring-clinical-100'
+                } focus:ring-2 outline-none text-sm font-medium text-slate-800 transition-all`}
               />
+              {ageError && (
+                <p className="text-xs text-rose-600 font-medium mt-1 flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span>{ageError}</span>
+                </p>
+              )}
             </div>
 
             <div>

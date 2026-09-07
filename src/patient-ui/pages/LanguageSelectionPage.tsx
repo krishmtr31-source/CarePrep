@@ -14,8 +14,8 @@ export const LanguageSelectionPage: React.FC<LanguageSelectionPageProps> = ({
   const { language, setLanguage, t } = useLanguage();
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-emerald-50/50 via-white to-slate-50 flex flex-col justify-between p-4 sm:p-6 lg:p-8">
-      <div className="max-w-xl mx-auto w-full my-auto py-8">
+    <div className="min-h-screen flex flex-col justify-between p-4 sm:p-6 lg:p-8 relative z-10">
+      <div className="max-w-xl mx-auto w-full my-auto py-8 p-6 sm:p-8 rounded-3xl bg-white/85 backdrop-blur-xl border border-white/60 shadow-xl shadow-slate-900/10">
         <button
           onClick={onBack}
           className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 mb-6 transition-colors"

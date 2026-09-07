@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import { useAuth } from '../../auth/AuthContext';
 import { PatientIdentity, ConsentRecord } from '../../data-models/patient';
 import { IntakeMode, IntakeAnswer, PatientCaseRecord, IntakeQuestion } from '../../data-models/intake';
 import { getAdaptiveSocratesQuestions } from '../../ai-services/socratesEngine';
@@ -8,6 +9,7 @@ import { RedFlagRule } from '../../data-models/redFlag';
 import { localStore } from '../../backend/storage/localStore';
 import { conversationService } from '../../ai-services/conversation/ConversationService';
 import { useLanguage, LanguageCode } from './LanguageContext';
+import { carePrepApi } from '../api/apiClient';
 
 const SESSION_KEY = 'sih_intake_session_v1';
 
@@ -46,9 +48,36 @@ interface IntakeContextType {
 const IntakeContext = createContext<IntakeContextType | undefined>(undefined);
 
 export const IntakeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
   const { language } = useLanguage();
   const [patient, setPatientState] = useState<PatientIdentity | null>(() => localStore.getCurrentPatient());
   const [consent, setConsentState] = useState<ConsentRecord | null>(null);
+
+  // Sync patient state with authenticated patient user
+  useEffect(() => {
+    if (user && user.role === 'patient') {
+      const existing = localStore.getPatients().find(p => p.id === user.id);
+      if (existing) {
+        setPatientState(existing);
+      } else {
+        const newPat: PatientIdentity = {
+          id: user.id,
+          fullName: user.name,
+          age: user.patientProfile?.age || 40,
+          gender: user.patientProfile?.gender || 'male',
+          phoneNumber: user.phoneNumber || user.email,
+          abhaId: user.patientProfile?.abhaId,
+          city: user.patientProfile?.city || 'Jaipur',
+          preferredLanguage: user.patientProfile?.preferredLanguage || language,
+          createdAt: user.createdAt
+        };
+        setPatientState(newPat);
+        localStore.savePatient(newPat);
+      }
+    } else if (!user) {
+      setPatientState(null);
+    }
+  }, [user, language]);
 
   // Restore cached session on load / refresh
   const [mode, setModeState] = useState<IntakeMode>(() => {
@@ -220,20 +249,46 @@ export const IntakeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       ? [firstAns.selectedOptionIds?.join(', '), firstAns.customText].filter(Boolean).join(' - ')
       : 'General Pre-Consultation';
 
+    const existingCases = localStore.getCases();
+    const tokenNumber = `C-${100 + existingCases.length + 1}`;
+    const queuePosition = existingCases.filter(c => c.status !== 'REVIEWED_BY_DOCTOR').length + 1;
+
     const newCase: PatientCaseRecord = {
       caseId,
       patientId: curPat.id,
       mode,
-      status: activeRedFlags.length > 0 ? 'RED_FLAG_TRIAGE' : 'COMPLETED',
+      status: activeRedFlags.length > 0 ? 'RED_FLAG_TRIAGE' : 'SUBMITTED_TO_DOCTOR',
       chiefComplaint: chiefComplaintStr,
       answers: Object.values(answers),
       startedAt: new Date(Date.now() - 300000).toISOString(),
       completedAt: new Date().toISOString(),
+      tokenNumber,
+      queuePosition,
       redFlagsDetected: activeRedFlags.map(r => r.id),
       language: language as LanguageCode
     };
 
     localStore.saveCase(newCase);
+
+    // Save to permanent MongoDB Atlas database
+    carePrepApi.saveAssessment({
+      assessmentId: caseId,
+      chiefComplaint: newCase.chiefComplaint,
+      symptoms: Object.values(answers).map(a => a.customText || a.selectedOptionIds?.join(', ')).filter(Boolean),
+      socratesData: {
+        mode: newCase.mode,
+        answersCount: Object.keys(answers).length
+      },
+      triageStatus: activeRedFlags.length > 0 ? 'RED_FLAG_TRIAGE' : 'NORMAL',
+      priority: activeRedFlags.length > 0 ? 'URGENT' : 'ROUTINE',
+      status: activeRedFlags.length > 0 ? 'RED_FLAG_TRIAGE' : 'SUBMITTED_TO_DOCTOR',
+      tokenNumber,
+      queuePosition,
+      redFlagsDetected: activeRedFlags.map(r => r.id),
+      answers: newCase.answers,
+      language: newCase.language
+    }).catch(e => console.warn('[MongoDB] IntakeContext assessment sync warning:', e));
+
     sessionStorage.removeItem(SESSION_KEY);
     return caseId;
   };

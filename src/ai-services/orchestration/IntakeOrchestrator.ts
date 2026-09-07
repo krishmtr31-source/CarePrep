@@ -177,11 +177,13 @@ export class IntakeOrchestrator {
       this.context.evidenceTrail.push(...safetyResponse.evidence);
     }
 
-    if (safetyResponse.status === 'EMERGENCY') {
+    if (safetyResponse.status === 'EMERGENCY' || this.context.safetyStatus === 'RED') {
       this.context.safetyStatus = 'RED';
-      this.context.activeRedFlags = safetyResponse.structuredData.alerts;
+      if (safetyResponse.structuredData.alerts.length > 0) {
+        this.context.activeRedFlags = safetyResponse.structuredData.alerts;
+      }
       this.context.state = 'EMERGENCY_TRIAGE';
-      this.logActivity('SafetyController', `🔴 EMERGENCY TRIGGER: ${safetyResponse.structuredData.alerts.map(a => a.ruleTitle).join('; ')}`, 'ERROR');
+      this.logActivity('SafetyController', `🔴 EMERGENCY ACTIVE (Non-Downgrade Invariant): Priority human triage retained`, 'ERROR');
       return {
         orchestratorContext: this.getContext(),
         suggestedQuestions: [],

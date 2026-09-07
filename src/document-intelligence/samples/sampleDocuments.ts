@@ -68,6 +68,37 @@ HbA1c > 6.5% indicates uncontrolled glycemic status. Clinical correlation advise
 Verified by: Dr. Sunita Rao, MD (Biochemistry)`
   },
   {
+    id: 'sample-careprep-lab-01',
+    name: 'CarePrep_Diagnostic_Lab_Report.pdf',
+    type: 'LAB_REPORT',
+    label: 'CarePrep Standard Diagnostic Lab Report (12 Parameters)',
+    description: 'Complete metabolic and hematology panel with Hemoglobin, WBC, Platelets, Glucose, HbA1c, Lipid Profile, LFT, and Creatinine.',
+    mockDate: '2026-03-01',
+    rawText: `CAREPREP CENTRAL DIAGNOSTIC LABORATORY
+NABL Accredited Facility | Certificate No: NABL-88210
+Date: 01-Mar-2026
+
+DEPARTMENT OF CLINICAL BIOCHEMISTRY & HEMATOLOGY
+LABORATORY INVESTIGATION REPORT
+
+INVESTIGATION NAME                   RESULT     UNIT         REFERENCE RANGE     STATUS
+---------------------------------------------------------------------------------------
+Hemoglobin                           14.2       g/dL         13.0–17.0           Normal
+WBC                                  7,200      cells/µL     4,500–11,000        Normal
+Platelets                            245,000    cells/µL     150,000–450,000     Normal
+Fasting Blood Glucose                96         mg/dL        70–99               Normal
+HbA1c                                5.4        %            < 5.7               Normal
+Total Cholesterol                    188        mg/dL        < 200               Normal
+LDL                                  112        mg/dL        < 100               Borderline
+HDL                                  48         mg/dL        > 40                Normal
+Triglycerides                        142        mg/dL        < 150               Normal
+ALT/SGPT                             28         U/L          7–56                Normal
+AST/SGOT                             24         U/L          10–40               Normal
+Creatinine                           0.9        mg/dL        0.7–1.3             Normal
+
+Report verified and approved.`
+  },
+  {
     id: 'sample-discharge-01',
     name: 'Demo_Discharge_Summary_Devendra_Patel.pdf',
     type: 'DISCHARGE_SUMMARY',
@@ -114,10 +145,31 @@ Rx:
 Note: Faded receipt - signature unverified. Requires physical document verification.`
   },
   {
+    id: 'sample-ayush-rx-01',
+    name: 'Demo_Ayurvedic_Prescription.pdf',
+    type: 'PRESCRIPTION',
+    label: '5. AYUSH Ayurvedic Prescription',
+    description: 'Holistic Ayurvedic prescription with Ashwagandha Churna, Triphala Guggulu, and Dashamoola Kwatha.',
+    mockDate: '2026-02-20',
+    rawText: `PATANJALI AYURVED CLINIC & PANCHAKARMA CENTRE
+Vaidya Ramesh Chandra, BAMS, MD (Ayurveda)
+Date: 20-Feb-2026 | Patient: Ananya Iyer, 34/F
+Roga Pariksha / Assessment: Vata-Pitta Prakriti with Agnimandya & Sandhivata
+
+Chikitsa / Prescribed Formulations:
+1. Ashwagandha Churna 5 g - Oral - Twice daily (BD) with warm milk - Duration: 30 days
+2. Triphala Guggulu 500 mg - Oral - Twice daily (BD) with lukewarm water - Duration: 30 days
+3. Dashamoola Kwatha 20 ml - Oral - Twice daily (BD) before meals - Duration: 15 days
+
+Pathya / Lifestyle Advice:
+- Avoid cold, dry, and processed foods (Vata vardhaka ahara)
+- Practice mild yoga and daily Abhyanga`
+  },
+  {
     id: 'sample-unseen-rx-01',
     name: 'Unseen_Cardiology_Clinic_Note.txt',
     type: 'PRESCRIPTION',
-    label: '5. Unseen Cardiology Prescription (Synthetic Test)',
+    label: '6. Unseen Cardiology Prescription (Synthetic Test)',
     description: 'Outpatient cardiology visit note with Telmisartan 40mg and Amlodipine 5mg.',
     mockDate: '2026-03-01',
     rawText: `APOLLO HEART CLINIC
@@ -139,7 +191,7 @@ Instructions:
     id: 'sample-unseen-lab-01',
     name: 'Unseen_Thyroid_Kidney_Panel.txt',
     type: 'LAB_REPORT',
-    label: '6. Unseen Lab Report (Thyroid & Renal Panel)',
+    label: '7. Unseen Lab Report (Thyroid & Renal Panel)',
     description: 'Laboratory diagnostic panel with Serum Creatinine, Blood Urea, and TSH.',
     mockDate: '2026-03-05',
     rawText: `LAL PATHLABS CLINICAL DIAGNOSTICS

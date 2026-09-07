@@ -1,25 +1,32 @@
 import { ILLMProvider } from './ILLMProvider';
-import { PatientInterpretationSchema } from '../llmTypes';
+import { PatientInterpretationSchema, DocumentInterpretationSchema } from '../llmTypes';
 import { SchemaValidator } from '../schemaValidator';
 import { ServerGeminiProvider } from './ServerGeminiProvider';
 
 export class GeminiProxyProvider implements ILLMProvider {
   private apiEndpoint: string;
+  private docEndpoint: string;
   private modelName: string;
   private serverProvider: ServerGeminiProvider | null = null;
   private lastHealthCheckStatus: boolean | null = null;
 
-  constructor(options?: { apiEndpoint?: string; modelName?: string }) {
+  constructor(options?: { apiEndpoint?: string; docEndpoint?: string; modelName?: string }) {
     this.apiEndpoint = options?.apiEndpoint || '/api/ai/interpret';
-    this.modelName = options?.modelName || 'gemini-2.5-flash';
+    this.docEndpoint = options?.docEndpoint || '/api/ai/document';
+    this.modelName = options?.modelName || 'gemini-3.6-flash';
 
     // In server/Node environment (or tests), initialize local server provider if process.env is present
-    if (typeof process !== 'undefined' && process.env && process.env.GEMINI_API_KEY) {
+    this.getServerProvider();
+  }
+
+  private getServerProvider(): ServerGeminiProvider | null {
+    if (!this.serverProvider && typeof process !== 'undefined' && process.env && process.env.GEMINI_API_KEY) {
       this.serverProvider = new ServerGeminiProvider({
         apiKey: process.env.GEMINI_API_KEY,
         modelName: process.env.GEMINI_MODEL || this.modelName
       });
     }
+    return this.serverProvider;
   }
 
   public getProviderName(): string {
@@ -32,8 +39,9 @@ export class GeminiProxyProvider implements ILLMProvider {
 
   public async testConnection(): Promise<boolean> {
     // 1. Direct Node environment test if ServerGeminiProvider exists
-    if (this.serverProvider && this.serverProvider.isConfigured()) {
-      const liveOk = await this.serverProvider.testConnection();
+    const server = this.getServerProvider();
+    if (server && server.isConfigured()) {
+      const liveOk = await server.testConnection();
       this.lastHealthCheckStatus = liveOk;
       return liveOk;
     }
@@ -72,8 +80,9 @@ export class GeminiProxyProvider implements ILLMProvider {
     context?: string
   ): Promise<PatientInterpretationSchema> {
     // 1. If running in Node environment with direct Server provider
-    if (this.serverProvider && this.serverProvider.isConfigured()) {
-      return this.serverProvider.interpretPatientUtterance(text, language, context);
+    const server = this.getServerProvider();
+    if (server && server.isConfigured()) {
+      return server.interpretPatientUtterance(text, language, context);
     }
 
     // 2. If running in browser, call secure backend API proxy
@@ -111,5 +120,92 @@ export class GeminiProxyProvider implements ILLMProvider {
     }
 
     throw new Error('No Gemini backend endpoint or local API key available');
+  }
+
+  public async interpretDocument(
+    rawText: string,
+    fileName: string = 'document',
+    fileData?: string,
+    mimeType?: string
+  ): Promise<DocumentInterpretationSchema> {
+    // 1. If running in Node environment with direct Server provider
+    const server = this.getServerProvider();
+    if (server && server.isConfigured()) {
+      return server.interpretDocument(rawText, fileName);
+    }
+
+    // 2. If running in browser, call secure backend API proxy
+    if (typeof window !== 'undefined') {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 35000);
+
+      try {
+        const response = await fetch(this.docEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            rawText,
+            fileName,
+            fileData,
+            mimeType
+          }),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          const errBody = await response.json().catch(() => ({}));
+          throw new Error(errBody.error || `Gemini backend proxy returned HTTP ${response.status}`);
+        }
+
+        const resData = await response.json();
+        const validated = SchemaValidator.validateDocumentInterpretation(resData.data, rawText, fileName);
+        return validated.data;
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        throw new Error(err.message || 'Failed to analyze document with Gemini AI');
+      }
+    }
+
+    throw new Error('No Gemini backend endpoint or local API key available');
+  }
+
+  public async analyzeMedicalDocument(params: {
+    rawText?: string;
+    fileName?: string;
+    fileData?: string;
+    mimeType?: string;
+  }): Promise<any> {
+    if (typeof window !== 'undefined') {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 35000);
+
+      try {
+        const response = await fetch(this.docEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(params),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          const errBody = await response.json().catch(() => ({}));
+          throw new Error(errBody.error || `Gemini analysis error (HTTP ${response.status})`);
+        }
+
+        const resData = await response.json();
+        return resData.data;
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        throw new Error(err.message || 'Failed to analyze document with Gemini AI');
+      }
+    }
+
+    throw new Error('Gemini medical document analysis only available via backend proxy');
   }
 }

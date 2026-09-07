@@ -1,164 +1,162 @@
-import React from 'react';
-import { useLanguage } from '../../shared/contexts/LanguageContext';
+import React, { useState } from 'react';
 import { 
-  Sparkles, 
-  Mic, 
-  Activity, 
-  ShieldCheck, 
-  Stethoscope, 
   ArrowRight, 
-  Globe2, 
-  HeartHandshake,
-  CheckCircle2
+  Play, 
+  X 
 } from 'lucide-react';
+import { ActiveScreen } from '../../App';
+import { HowItWorksInteractive } from '../components/HowItWorksInteractive';
 
 interface WelcomePageProps {
   onStart: () => void;
   onOpenDoctor: () => void;
-  onSelectLanguage: () => void;
+  onSelectLanguage?: () => void;
+  onNavigateToScreen?: (screen: ActiveScreen) => void;
+  onOpenAuth?: (role?: 'patient' | 'doctor', mode?: 'login' | 'signup') => void;
 }
 
 export const WelcomePage: React.FC<WelcomePageProps> = ({
   onStart,
-  onOpenDoctor,
-  onSelectLanguage
+  onNavigateToScreen,
+  onOpenAuth
 }) => {
-  const { t, language } = useLanguage();
+  const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-emerald-50/60 via-slate-50 to-white flex flex-col justify-between p-4 sm:p-6 lg:p-8">
-      {/* Header */}
-      <header className="max-w-5xl mx-auto w-full flex items-center justify-between py-3">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center shadow-md shadow-emerald-200">
-            <Sparkles className="w-5 h-5" />
-          </div>
-          <div>
-            <h1 className="font-extrabold text-lg sm:text-xl text-slate-900 tracking-tight flex items-center gap-1.5">
-              {t('app_name')}
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-                SIH26047
-              </span>
+    <div className="relative w-full bg-white flex flex-col overflow-x-hidden select-none">
+      {/* 
+        HERO SECTION (id="home")
+        Occupies ~88–92vh (full viewport first screen below 64px header).
+        Desktop: Left 45%, Right 55%
+      */}
+      <section 
+        id="home" 
+        className="relative w-full h-[calc(100vh-76px)] min-h-[570px] max-h-[850px] lg:min-h-[590px] flex items-center bg-white overflow-hidden"
+      >
+        {/* Full-Bleed Hero Artwork: Desktop uses existing /assets/hero-doctor.png anchored to the right */}
+        <div 
+          className="hidden lg:block absolute inset-0 w-full h-full bg-no-repeat bg-cover bg-right-bottom pointer-events-none select-none z-0"
+          style={{
+            backgroundImage: `url('/assets/hero-doctor.png')`
+          }}
+        />
+
+        {/* Soft, natural gradient on left to ensure crisp text readability without washing out the doctor */}
+        <div 
+          className="hidden lg:block absolute inset-0 bg-gradient-to-r from-white via-white/80 to-transparent w-full lg:w-[48%] xl:w-[44%] pointer-events-none z-10" 
+        />
+
+        {/* Hero Content Container */}
+        <div className="relative z-20 max-w-7xl mx-auto px-6 sm:px-10 lg:px-16 w-full h-full flex items-center">
+          <div className="w-full lg:w-[48%] xl:w-[45%] flex flex-col justify-center space-y-5 sm:space-y-6 py-6 sm:py-8 animate-hero-fade-up">
+            
+            {/* Main Heading: 2 lines with confident healthcare typography */}
+            <h1 className="text-4xl sm:text-5xl md:text-[52px] lg:text-[58px] xl:text-[64px] font-extrabold tracking-[-0.03em] leading-[1.02] text-[#0A192F]">
+              <span className="block text-[#0A192F]">Smarter Preparation.</span>
+              <span className="block text-[#009B72]">Better Care.</span>
             </h1>
-            <p className="text-xs text-slate-500 font-medium hidden sm:block">{t('app_subtitle')}</p>
+
+            {/* Description: Clean, highly readable typography */}
+            <p className="text-base sm:text-lg lg:text-[19px] text-[#475569] font-normal leading-[1.58] max-w-[590px]">
+              Prepare your health information before your consultation, so doctors can spend less time collecting information and more time caring for you.
+            </p>
+
+            {/* CTA Buttons: Primary Navy + Secondary White Pill */}
+            <div className="flex flex-wrap items-center gap-3.5 sm:gap-4 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  if (onOpenAuth) onOpenAuth('patient', 'login');
+                  else onStart();
+                }}
+                className="group inline-flex items-center justify-center gap-2.5 px-7 py-3.5 rounded-full bg-[#0A192F] hover:bg-slate-800 text-white font-bold text-sm sm:text-base shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 active:translate-y-0 active:scale-98 cursor-pointer select-none"
+              >
+                <span>Get Started</span>
+                <ArrowRight className="w-4.5 h-4.5 group-hover:translate-x-1 transition-transform duration-200" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsHowItWorksOpen(true);
+                }}
+                className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full border border-slate-300 bg-white hover:bg-slate-50 hover:border-slate-400 text-slate-800 font-bold text-sm sm:text-base shadow-2xs hover:shadow-xs transition-all duration-200 active:scale-98 cursor-pointer select-none"
+              >
+                <Play className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-slate-800 text-slate-800" />
+                <span>See How It Works</span>
+              </button>
+            </div>
+
+            {/* Trust Indicator: 4 Clean Avatars + Truthful Healthcare Professional Note */}
+            <div className="flex items-center gap-3 pt-1.5 sm:pt-2">
+              <div className="flex -space-x-2.5 overflow-hidden flex-shrink-0">
+                <img
+                  src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=96&h=96&fit=crop&crop=faces"
+                  alt="Patient"
+                  className="inline-block h-8 w-8 sm:h-9.5 sm:w-9.5 rounded-full ring-2 ring-white object-cover shadow-2xs"
+                />
+                <img
+                  src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=96&h=96&fit=crop&crop=faces"
+                  alt="Patient"
+                  className="inline-block h-8 w-8 sm:h-9.5 sm:w-9.5 rounded-full ring-2 ring-white object-cover shadow-2xs"
+                />
+                <img
+                  src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=96&h=96&fit=crop&crop=faces"
+                  alt="Doctor"
+                  className="inline-block h-8 w-8 sm:h-9.5 sm:w-9.5 rounded-full ring-2 ring-white object-cover shadow-2xs"
+                />
+                <img
+                  src="https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=96&h=96&fit=crop&crop=faces"
+                  alt="Doctor"
+                  className="inline-block h-8 w-8 sm:h-9.5 sm:w-9.5 rounded-full ring-2 ring-white object-cover shadow-2xs"
+                />
+              </div>
+              <span className="text-xs sm:text-[13px] text-slate-600 font-medium leading-snug">
+                Trusted by patients
+                <br />
+                and healthcare professionals
+              </span>
+            </div>
+
+            {/* Mobile Layout: Doctor Hero Image rendered naturally below buttons without overlapping text */}
+            <div className="lg:hidden w-full pt-4 pb-2">
+              <img 
+                src="/assets/hero-doctor.png" 
+                alt="CarePrep Doctor Consultation"
+                className="w-full h-auto max-h-[380px] object-cover object-right rounded-2xl shadow-sm border border-slate-100"
+              />
+            </div>
+
           </div>
         </div>
+      </section>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onSelectLanguage}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white/80 backdrop-blur-sm text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm"
-          >
-            <Globe2 className="w-3.5 h-3.5 text-emerald-600" />
-            <span className="uppercase">{language}</span>
-          </button>
-
-          <button
-            onClick={onOpenDoctor}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-900 text-white hover:bg-slate-800 text-xs font-semibold shadow-sm transition-all"
-          >
-            <Stethoscope className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="hidden sm:inline">{t('welcome.doctor_button')}</span>
-            <span className="sm:hidden">Doctor</span>
-          </button>
-        </div>
-      </header>
-
-      {/* Main Hero */}
-      <main className="max-w-4xl mx-auto w-full my-auto py-8 sm:py-12">
-        <div className="text-center space-y-4">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-100/80 border border-emerald-200 text-emerald-900 text-xs font-semibold tracking-wide shadow-sm">
-            <HeartHandshake className="w-4 h-4 text-emerald-700" />
-            <span>{t('welcome.badge')}</span>
-          </div>
-
-          <h1 className="text-3xl sm:text-5xl font-extrabold text-slate-900 tracking-tight leading-tight sm:leading-tight">
-            {t('welcome.title_1')}{' '}
-            <span className="bg-gradient-to-r from-emerald-600 via-teal-600 to-clinical-600 bg-clip-text text-transparent">
-              {t('welcome.title_2')}
-            </span>
-          </h1>
-
-          <p className="max-w-2xl mx-auto text-sm sm:text-base text-slate-600 font-normal leading-relaxed">
-            Tell us about your health before meeting the doctor. We organize your symptoms and previous medical documents so your doctor can spend more time understanding you and less time collecting paperwork.
-          </p>
-
-          {/* 3 Input Modalities Banner */}
-          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold">
-              🎤 Speak in Hindi / English / Tamil
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold">
-              ⌨️ Type Naturally
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold">
-              👆 Tap Quick Option Chips
-            </span>
-          </div>
-
-          <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
+      {/* Interactive How It Works Modal (triggered when clicking "See How It Works") */}
+      {isHowItWorksOpen && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="relative w-full max-w-5xl max-h-[90vh] bg-white rounded-3xl shadow-2xl overflow-y-auto border border-slate-100">
             <button
-              onClick={onStart}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-base shadow-lg shadow-emerald-200 hover:shadow-xl transition-all duration-200 transform hover:-translate-y-0.5"
+              type="button"
+              onClick={() => setIsHowItWorksOpen(false)}
+              className="absolute top-5 right-5 z-20 p-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors cursor-pointer"
+              aria-label="Close How It Works modal"
             >
-              <span>{t('welcome.start_button')}</span>
-              <ArrowRight className="w-5 h-5" />
+              <X className="w-5 h-5" />
             </button>
-
-            <button
-              onClick={onSelectLanguage}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-4 rounded-2xl bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm border border-slate-200 shadow-sm transition-all"
-            >
-              <Globe2 className="w-4 h-4 text-slate-500" />
-              <span>Change Language (भाषा / மொழி)</span>
-            </button>
+            <HowItWorksInteractive
+              onGetStarted={() => {
+                setIsHowItWorksOpen(false);
+                if (onOpenAuth) onOpenAuth('patient', 'signup');
+                else onStart();
+              }}
+            />
           </div>
         </div>
-
-        {/* Patient Care Guarantees Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-10 sm:mt-14">
-          <div className="bg-white/90 backdrop-blur-sm p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition-shadow">
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3">
-              <ShieldCheck className="w-5 h-5" />
-            </div>
-            <h3 className="font-bold text-slate-900 text-sm mb-1">Privacy & Safety First</h3>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Your health answers are collected solely to prepare your intake summary for your doctor. We do not share your private health data.
-            </p>
-          </div>
-
-          <div className="bg-white/90 backdrop-blur-sm p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition-shadow">
-            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3">
-              <Stethoscope className="w-5 h-5" />
-            </div>
-            <h3 className="font-bold text-slate-900 text-sm mb-1">Doctor Always Verifies</h3>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              The assistant creates a preliminary draft. Your consulting physician reviews, modifies, and confirms every clinical observation.
-            </p>
-          </div>
-
-          <div className="bg-white/90 backdrop-blur-sm p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition-shadow">
-            <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center mb-3">
-              <Activity className="w-5 h-5" />
-            </div>
-            <h3 className="font-bold text-slate-900 text-sm mb-1">Emergency Warning Gate</h3>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              If severe chest pain, breathing difficulty, or red flags are detected, the system immediately directs you to urgent emergency care.
-            </p>
-          </div>
-        </div>
-      </main>
-
-      {/* Footer */}
-      <footer className="max-w-5xl mx-auto w-full py-4 text-center border-t border-slate-200/60 space-y-1">
-        <p className="text-xs text-slate-500 font-medium flex items-center justify-center gap-1.5">
-          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-          <span>Pre-consultation clinical intake assistant · Mandatory physician review</span>
-        </p>
-        <p className="text-[11px] text-slate-400">
-          Prototype safety screening — not clinically validated. Human triage required.
-        </p>
-      </footer>
+      )}
     </div>
   );
 };

@@ -27,6 +27,54 @@ export interface PatientInterpretationSchema {
   confidence?: number;
 }
 
+export interface DocumentMedicationExtraction {
+  name: string;
+  originalText?: string;
+  dose?: string;
+  frequency?: string;
+  duration?: string;
+  evidence?: string;
+  page?: number;
+  confidence?: number;
+  requiresVerification?: boolean;
+  isAyushMedicine?: boolean;
+}
+
+export interface DocumentDiagnosisExtraction {
+  name: string;
+  originalText?: string;
+  evidence?: string;
+  page?: number;
+  confidence?: number;
+}
+
+export interface DocumentLabExtraction {
+  testName: string;
+  originalText?: string;
+  value: string | number | null;
+  unit?: string;
+  referenceRange?: string;
+  flag?: 'HIGH' | 'LOW' | 'NORMAL' | 'INDETERMINATE';
+  evidence?: string;
+  page?: number;
+  confidence?: number;
+  requiresVerification?: boolean;
+}
+
+export interface DocumentInterpretationSchema {
+  documentType: 'PRESCRIPTION' | 'LAB_REPORT' | 'DISCHARGE_SUMMARY' | 'OTHER';
+  documentDate?: string | null;
+  facilityName?: string | null;
+  doctorName?: string | null;
+  summaryNote?: string | null;
+  medications: DocumentMedicationExtraction[];
+  diagnoses: DocumentDiagnosisExtraction[];
+  labs: DocumentLabExtraction[];
+  confidence?: number;
+  requiresVerification?: boolean;
+  unreliableFields?: string[];
+}
+
 export interface LLMProviderConfig {
   providerName: 'OPENAI' | 'GEMINI' | 'LOCAL_LLM' | 'DETERMINISTIC_FALLBACK' | 'MOCK';
   modelName: string;

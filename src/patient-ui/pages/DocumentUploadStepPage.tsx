@@ -40,7 +40,7 @@ export const DocumentUploadStepPage: React.FC<DocumentUploadStepPageProps> = ({
   const allLabResults = uploadedDocs.flatMap(d => d.labResults || []);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50 flex flex-col justify-between p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen flex flex-col justify-between p-4 sm:p-6 lg:p-8 relative z-10">
       <div className="max-w-3xl mx-auto w-full my-auto py-6 space-y-6">
         {/* Navigation & Header */}
         <div className="flex items-center justify-between">

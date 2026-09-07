@@ -1,7 +1,7 @@
 import { ILLMProvider } from './providers/ILLMProvider';
 import { DeterministicNLPProvider } from './providers/DeterministicNLPProvider';
 import { GeminiProxyProvider } from './providers/GeminiProxyProvider';
-import { PatientInterpretationSchema, LLMProviderStatus, LLMAuditEntry } from './llmTypes';
+import { PatientInterpretationSchema, DocumentInterpretationSchema, LLMProviderStatus, LLMAuditEntry } from './llmTypes';
 
 const MAX_LLM_REQUESTS_PER_SESSION = 20;
 
@@ -159,6 +159,109 @@ export class LLMGateway {
         model: this.fallbackProvider.getModelName(),
         timestamp: new Date().toISOString(),
         taskType: 'PATIENT_INTERPRETATION',
+        success: true,
+        fallbackUsed: true,
+        latencyMs: Date.now() - startTime,
+        errorMessage
+      };
+      this.auditHistory.push(audit);
+
+      return {
+        interpretation: fallbackResult,
+        providerUsed: this.fallbackProvider.getProviderName(),
+        fallbackTriggered: true,
+        auditEntry: audit
+      };
+    }
+  }
+
+  public async interpretDocument(
+    rawText: string,
+    fileName: string = 'document',
+    fileData?: string,
+    mimeType?: string
+  ): Promise<{
+    interpretation: DocumentInterpretationSchema;
+    providerUsed: string;
+    fallbackTriggered: boolean;
+    auditEntry: LLMAuditEntry;
+    rawAnalysis?: any;
+  }> {
+    const startTime = Date.now();
+    let fallbackTriggered = false;
+    let errorMessage: string | undefined;
+
+    // Guard: Max request limit per session
+    if (this.totalRequestsThisSession >= MAX_LLM_REQUESTS_PER_SESSION) {
+      fallbackTriggered = true;
+      errorMessage = 'Session request limit exceeded. Defaulting to deterministic NLP.';
+      const fallbackResult = this.fallbackProvider.interpretDocument
+        ? await this.fallbackProvider.interpretDocument(rawText, fileName)
+        : (await new DeterministicNLPProvider().interpretDocument(rawText, fileName));
+      
+      const audit: LLMAuditEntry = {
+        id: `audit-${Date.now()}`,
+        provider: this.fallbackProvider.getProviderName(),
+        model: this.fallbackProvider.getModelName(),
+        timestamp: new Date().toISOString(),
+        taskType: 'DOCUMENT_NORMALIZATION',
+        success: true,
+        fallbackUsed: true,
+        latencyMs: Date.now() - startTime,
+        errorMessage
+      };
+      this.auditHistory.push(audit);
+
+      return {
+        interpretation: fallbackResult,
+        providerUsed: this.fallbackProvider.getProviderName(),
+        fallbackTriggered: true,
+        auditEntry: audit
+      };
+    }
+
+    this.totalRequestsThisSession++;
+
+    try {
+      if (!this.primaryProvider.interpretDocument) {
+        throw new Error('Primary provider does not support document interpretation.');
+      }
+
+      const result = await this.primaryProvider.interpretDocument(rawText, fileName, fileData, mimeType);
+      this.isLiveConnected = true;
+
+      const audit: LLMAuditEntry = {
+        id: `audit-${Date.now()}`,
+        provider: this.primaryProvider.getProviderName(),
+        model: this.primaryProvider.getModelName(),
+        timestamp: new Date().toISOString(),
+        taskType: 'DOCUMENT_NORMALIZATION',
+        success: true,
+        fallbackUsed: this.primaryProvider.getProviderName() === 'DETERMINISTIC_NLP',
+        latencyMs: Date.now() - startTime
+      };
+      this.auditHistory.push(audit);
+
+      return {
+        interpretation: result,
+        providerUsed: this.primaryProvider.getProviderName(),
+        fallbackTriggered: false,
+        auditEntry: audit
+      };
+    } catch (err: any) {
+      fallbackTriggered = true;
+      errorMessage = err.message || 'Gemini document analysis error';
+
+      const fallbackResult = this.fallbackProvider.interpretDocument
+        ? await this.fallbackProvider.interpretDocument(rawText, fileName)
+        : (await new DeterministicNLPProvider().interpretDocument(rawText, fileName));
+
+      const audit: LLMAuditEntry = {
+        id: `audit-${Date.now()}`,
+        provider: this.fallbackProvider.getProviderName(),
+        model: this.fallbackProvider.getModelName(),
+        timestamp: new Date().toISOString(),
+        taskType: 'DOCUMENT_NORMALIZATION',
         success: true,
         fallbackUsed: true,
         latencyMs: Date.now() - startTime,

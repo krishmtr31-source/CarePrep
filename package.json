@@ -7,19 +7,26 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "server": "node --loader ts-node/esm src/backend/server/apiServer.ts",
+    "seed": "node --loader ts-node/esm src/backend/scripts/seed.ts",
     "db:test": "tsx src/backend/scripts/testDatabase.ts",
     "db:seed": "tsx src/backend/scripts/seedDatabase.ts"
   },
   "dependencies": {
     "@google/genai": "^2.19.0",
+    "@types/canvas-confetti": "^1.9.0",
+    "@types/uuid": "^10.0.0",
     "bcryptjs": "^3.0.3",
+    "canvas-confetti": "^1.9.4",
     "dotenv": "^17.4.2",
+    "framer-motion": "^13.2.0",
     "lucide-react": "^0.475.0",
     "mongoose": "^9.9.5",
     "pdfjs-dist": "^6.3.289",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "tesseract.js": "^7.0.0"
+    "tesseract.js": "^7.0.0",
+    "uuid": "^14.0.2"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

@@ -1,8 +1,10 @@
 import { GoogleGenAI } from '@google/genai';
 import { ILLMProvider } from './ILLMProvider';
-import { PatientInterpretationSchema, LLMProviderConfig } from '../llmTypes';
+import { PatientInterpretationSchema, DocumentInterpretationSchema, LLMProviderConfig } from '../llmTypes';
 import { PromptSanitizer } from '../promptSanitizer';
 import { SchemaValidator } from '../schemaValidator';
+import { classifyGeminiError, sanitizeLogMessage, isGeminiMockModeEnabled } from '../../../backend/utils/geminiErrorHandler';
+import { medicalDocumentService } from '../../../backend/services/medicalDocumentService';
 
 export class ServerGeminiProvider implements ILLMProvider {
   private config: LLMProviderConfig;
@@ -10,14 +12,14 @@ export class ServerGeminiProvider implements ILLMProvider {
 
   constructor(config?: Partial<LLMProviderConfig>) {
     const apiKey = config?.apiKey || (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : undefined);
-    const modelName = config?.modelName || (typeof process !== 'undefined' ? process.env?.GEMINI_MODEL : undefined) || 'gemini-2.5-flash';
+    const modelName = config?.modelName || (typeof process !== 'undefined' ? (process.env?.GEMINI_MODEL || 'gemini-3.6-flash') : 'gemini-3.6-flash');
 
     this.config = {
       providerName: 'GEMINI',
       modelName,
       apiKey,
       timeoutMs: config?.timeoutMs || 8000,
-      maxTokens: config?.maxTokens || 600,
+      maxTokens: config?.maxTokens || 1200,
       temperature: 0.1,
       ...config
     };
@@ -25,10 +27,18 @@ export class ServerGeminiProvider implements ILLMProvider {
     if (this.config.apiKey) {
       try {
         this.aiClient = new GoogleGenAI({ apiKey: this.config.apiKey });
+        if (process.env.NODE_ENV !== 'test') {
+          console.info(`[CarePrep AI] Initialized Live Gemini Client with model: ${this.config.modelName}`);
+        }
       } catch (err) {
-        console.warn('[GeminiProvider] Initialization warning:', err);
+        console.warn('[CarePrep AI] Gemini initialization warning:', err);
+      }
+    } else {
+      if (process.env.NODE_ENV !== 'test') {
+        console.info('[CarePrep AI] No Gemini API key provided. Deterministic NLP fallback is active.');
       }
     }
+
   }
 
   public getProviderName(): string {
@@ -44,6 +54,10 @@ export class ServerGeminiProvider implements ILLMProvider {
   }
 
   public async testConnection(): Promise<boolean> {
+    if (isGeminiMockModeEnabled()) {
+      return true;
+    }
+
     if (!this.isConfigured() || !this.aiClient) {
       return false;
     }
@@ -59,8 +73,9 @@ export class ServerGeminiProvider implements ILLMProvider {
       });
 
       return Boolean(response && response.text);
-    } catch (err) {
-      console.warn('[GeminiProvider] Connection test failed:', err);
+    } catch (err: any) {
+      const classified = classifyGeminiError(err);
+      console.warn(`[GeminiProvider] Connection test warning: [${classified.code}] ${classified.sanitizedDiagnostic}`);
       return false;
     }
   }
@@ -70,6 +85,26 @@ export class ServerGeminiProvider implements ILLMProvider {
     language: 'en' | 'hi' | 'ta',
     context?: string
   ): Promise<PatientInterpretationSchema> {
+    if (isGeminiMockModeEnabled()) {
+      return {
+        complaint: text || 'Reported symptom',
+        duration: 'Not provided.',
+        location: 'Not provided.',
+        character: 'Not provided.',
+        severity: 'Not provided.',
+        associatedSymptoms: [],
+        aggravatingFactors: undefined,
+        relievingFactors: undefined,
+        missingInformation: ['duration', 'severity'],
+        nextQuestion: language === 'hi' ? 'आपको यह समस्या कब से है?' : (language === 'ta' ? 'இந்த பிரச்சனை எப்போது தொடங்கியது?' : 'How long have you experienced this?'),
+        uncertainty: 'CLEAR',
+        requiresClarification: false,
+        confidence: 0.95,
+        sourceText: text || '',
+        extractedAt: new Date().toISOString()
+      };
+    }
+
     if (!this.isConfigured() || !this.aiClient) {
       throw new Error('Gemini API key is not configured on server.');
     }
@@ -126,8 +161,79 @@ Extract structured JSON with fields:
 
       return validation.data;
     } catch (err: any) {
-      console.warn('[GeminiProvider] Error during utterance interpretation:', err.message);
-      throw err;
+      const classified = classifyGeminiError(err);
+      console.warn(`[GeminiProvider] Error during utterance interpretation: [${classified.code}] ${classified.sanitizedDiagnostic}`);
+      const customErr: any = new Error(classified.message);
+      customErr.code = classified.code;
+      customErr.status = classified.httpStatus;
+      customErr.sanitizedDiagnostic = classified.sanitizedDiagnostic;
+      throw customErr;
+    }
+  }
+
+  public async interpretDocument(
+    rawText: string,
+    fileName: string = 'document'
+  ): Promise<DocumentInterpretationSchema> {
+    try {
+      // Delegate to canonical medicalDocumentService to maintain ONE canonical extraction pipeline
+      const extraction = await medicalDocumentService.analyzeDocument({
+        fileName,
+        mimeType: 'text/plain',
+        rawText
+      });
+
+      // Map canonical StructuredExtractionResult to DocumentInterpretationSchema
+      let docType: 'PRESCRIPTION' | 'LAB_REPORT' | 'DISCHARGE_SUMMARY' | 'OTHER' = 'OTHER';
+      if (extraction.documentType === 'PRESCRIPTION') docType = 'PRESCRIPTION';
+      else if (extraction.documentType === 'LAB_REPORT') docType = 'LAB_REPORT';
+      else if (extraction.documentType === 'DISCHARGE_SUMMARY') docType = 'DISCHARGE_SUMMARY';
+
+      return {
+        documentType: docType,
+        documentDate: extraction.documentDate,
+        facilityName: extraction.hospitalName,
+        doctorName: extraction.doctorName,
+        summaryNote: extraction.summary,
+        medications: extraction.medications.map(m => ({
+          name: m.name,
+          originalText: m.name,
+          dose: m.dosage || undefined,
+          frequency: m.frequency || undefined,
+          duration: m.duration || undefined,
+          evidence: m.name,
+          confidence: 0.95,
+          requiresVerification: false
+        })),
+        diagnoses: extraction.diagnosesMentioned.map(d => ({
+          name: d,
+          originalText: d,
+          evidence: d,
+          confidence: 0.95
+        })),
+        labs: extraction.labResults.map(l => ({
+          testName: l.testName,
+          originalText: `${l.testName}: ${l.value} ${l.unit}`,
+          value: l.value,
+          unit: l.unit,
+          referenceRange: l.referenceRange || undefined,
+          flag: (l.flag === 'HIGH' || l.flag === 'LOW' || l.flag === 'NORMAL') ? l.flag : 'INDETERMINATE',
+          evidence: `${l.testName} ${l.value}`,
+          confidence: 0.95,
+          requiresVerification: l.flag === 'UNCLEAR'
+        })),
+        confidence: 0.95,
+        requiresVerification: (extraction.extractionWarnings && extraction.extractionWarnings.length > 0),
+        unreliableFields: extraction.extractionWarnings || []
+      };
+    } catch (err: any) {
+      const classified = classifyGeminiError(err);
+      console.warn(`[GeminiProvider] Error during document interpretation: [${classified.code}] ${classified.sanitizedDiagnostic}`);
+      const customErr: any = new Error(classified.message);
+      customErr.code = classified.code;
+      customErr.status = classified.httpStatus;
+      customErr.sanitizedDiagnostic = classified.sanitizedDiagnostic;
+      throw customErr;
     }
   }
 }

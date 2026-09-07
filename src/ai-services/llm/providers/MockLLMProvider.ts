@@ -1,5 +1,5 @@
 import { ILLMProvider } from './ILLMProvider';
-import { PatientInterpretationSchema } from '../llmTypes';
+import { PatientInterpretationSchema, DocumentInterpretationSchema } from '../llmTypes';
 import { SchemaValidator } from '../schemaValidator';
 
 export interface MockLLMBehavior {
@@ -9,6 +9,7 @@ export interface MockLLMBehavior {
   simulateDiagnosisAttempt?: boolean;
   simulateInventedSeverity?: boolean;
   customResponse?: Partial<PatientInterpretationSchema>;
+  customDocResponse?: Partial<DocumentInterpretationSchema>;
 }
 
 export class MockLLMProvider implements ILLMProvider {
@@ -129,6 +130,51 @@ export class MockLLMProvider implements ILLMProvider {
       requiresClarification: uncertainty === 'AMBIGUOUS',
       sourceText: text,
       extractedAt: new Date().toISOString()
+    };
+  }
+
+  public async interpretDocument(
+    rawText: string,
+    fileName: string = 'document'
+  ): Promise<DocumentInterpretationSchema> {
+    if (this.behavior.simulateTimeout) {
+      throw new Error('LLM request timed out after 5000ms.');
+    }
+    if (this.behavior.simulateHttpError) {
+      throw new Error('HTTP 503: Provider temporarily overloaded.');
+    }
+    if (this.behavior.simulateMalformedJson) {
+      const validation = SchemaValidator.validateDocumentInterpretation('{ invalid json :; document }', rawText, fileName);
+      return validation.data;
+    }
+
+    if (this.behavior.customDocResponse) {
+      const validation = SchemaValidator.validateDocumentInterpretation(this.behavior.customDocResponse, rawText, fileName);
+      return validation.data;
+    }
+
+    // Default simulation for standard document text
+    const lower = rawText.toLowerCase();
+    let docType: DocumentInterpretationSchema['documentType'] = 'OTHER';
+
+    if (lower.includes('rx') || lower.includes('prescription') || lower.includes('tablet') || lower.includes('tab.')) {
+      docType = 'PRESCRIPTION';
+    } else if (lower.includes('lab') || lower.includes('report') || lower.includes('test') || lower.includes('hba1c') || lower.includes('glucose')) {
+      docType = 'LAB_REPORT';
+    } else if (lower.includes('discharge') || lower.includes('admission') || lower.includes('hospital')) {
+      docType = 'DISCHARGE_SUMMARY';
+    }
+
+    return {
+      documentType: docType,
+      documentDate: '18-Jan-2026',
+      facilityName: 'City General Hospital',
+      doctorName: 'Dr. Sharma',
+      medications: [],
+      diagnoses: [],
+      labs: [],
+      confidence: 0.95,
+      requiresVerification: false
     };
   }
 }

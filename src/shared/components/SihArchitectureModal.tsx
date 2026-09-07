@@ -88,7 +88,7 @@ export const SihArchitectureModal: React.FC<SihArchitectureModalProps> = ({ isOp
               <div className="flex items-center justify-between font-bold text-emerald-950">
                 <span className="flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-emerald-600" />
-                  <span>2. Gemini 2.5 Flash (Conversation Understanding)</span>
+                  <span>2. Gemini 3.6 Flash (Conversation Understanding)</span>
                 </span>
                 <span className="text-[10px] bg-emerald-200/80 text-emerald-900 px-2 py-0.5 rounded font-mono">
                   Schema Validator + Grounding Guard

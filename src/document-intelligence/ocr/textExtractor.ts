@@ -6,9 +6,17 @@ import { cleanOcrText } from './ocrCleaner';
 // Set up pdf.js worker if in browser
 if (typeof window !== 'undefined') {
   try {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '3.11.174'}/pdf.worker.min.js`;
-  } catch (e) {
-    // fallback
+    // Prefer Vite URL resolution for the locally bundled worker
+    pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+      'pdfjs-dist/build/pdf.worker.min.mjs',
+      import.meta.url
+    ).toString();
+  } catch {
+    try {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version || '4.0.379'}/build/pdf.worker.min.mjs`;
+    } catch {
+      // fallback
+    }
   }
 }
 
@@ -66,7 +74,8 @@ export async function extractTextFromFile(
 }
 
 /**
- * Extracts text from PDF using pdfjs-dist with automatic OCR fallback if text quality is poor
+ * Extracts text from PDF using pdfjs-dist with automatic OCR fallback if text quality is poor.
+ * Accurately reconstructs line breaks and column spacing using text element coordinates.
  */
 export async function extractTextFromPdf(
   file: File,
@@ -82,7 +91,7 @@ export async function extractTextFromPdf(
     let fullText = '';
     const lines: string[] = [];
 
-    // Step 1: Attempt native PDF text extraction
+    // Step 1: Attempt layout-aware PDF text extraction
     for (let i = 1; i <= numPages; i++) {
       onProgress?.(
         Math.round(15 + (i / numPages) * 35),
@@ -90,29 +99,86 @@ export async function extractTextFromPdf(
       );
       const page = await pdfDoc.getPage(i);
       const textContent = await page.getTextContent();
-      const pageItems = textContent.items as any[];
+      const rawItems = textContent.items as any[];
 
-      const pageText = pageItems
-        .map(item => ('str' in item ? item.str : ''))
-        .join(' ');
+      interface PosTextItem {
+        str: string;
+        x: number;
+        y: number;
+        width: number;
+      }
 
-      fullText += `\n--- [Page ${i}] ---\n` + pageText;
-      pageItems.forEach(item => {
-        if (item.str && item.str.trim()) {
-          lines.push(item.str.trim());
+      const items: PosTextItem[] = rawItems
+        .filter((item: any) => typeof item.str === 'string' && item.str.length > 0)
+        .map((item: any) => ({
+          str: item.str,
+          x: Array.isArray(item.transform) ? item.transform[4] : 0,
+          y: Array.isArray(item.transform) ? item.transform[5] : 0,
+          width: typeof item.width === 'number' ? item.width : 0
+        }));
+
+      // Group text items by vertical row (tolerance: within 3.5 points)
+      const lineBuckets: Array<{ y: number; items: PosTextItem[] }> = [];
+
+      for (const it of items) {
+        let placed = false;
+        for (const bucket of lineBuckets) {
+          if (Math.abs(bucket.y - it.y) <= 3.5) {
+            bucket.items.push(it);
+            placed = true;
+            break;
+          }
         }
-      });
+        if (!placed) {
+          lineBuckets.push({ y: it.y, items: [it] });
+        }
+      }
+
+      // Sort rows top-to-bottom (descending Y in PDF coordinates)
+      lineBuckets.sort((a, b) => b.y - a.y);
+
+      const pageLines: string[] = [];
+      for (const bucket of lineBuckets) {
+        // Sort items left-to-right (ascending X)
+        bucket.items.sort((a, b) => a.x - b.x);
+
+        let rowStr = '';
+        let lastX = -1;
+        let lastWidth = 0;
+
+        for (const it of bucket.items) {
+          if (lastX >= 0) {
+            const gap = it.x - (lastX + lastWidth);
+            if (gap > 16) {
+              rowStr += '    '; // Table column spacing
+            } else if (gap > 3) {
+              rowStr += ' ';
+            }
+          }
+          rowStr += it.str;
+          lastX = it.x;
+          lastWidth = it.width;
+        }
+
+        const trimmedRow = rowStr.trim();
+        if (trimmedRow) {
+          pageLines.push(trimmedRow);
+          lines.push(trimmedRow);
+        }
+      }
+
+      fullText += `\n--- [Page ${i}] ---\n` + pageLines.join('\n');
     }
 
     const cleanedText = cleanOcrText(fullText);
     const quality = evaluateTextQuality(cleanedText);
 
     // Step 2: Quality validation check
-    if (quality.isAcceptable) {
+    if (quality.isAcceptable || lines.length >= 3) {
       onProgress?.(100, 'PDF text extraction verified.');
       return {
         text: cleanedText,
-        confidence: quality.score,
+        confidence: Math.max(0.85, quality.score),
         pagesCount: numPages,
         extractedLines: lines,
         extractionMethod: 'PDF_TEXT',

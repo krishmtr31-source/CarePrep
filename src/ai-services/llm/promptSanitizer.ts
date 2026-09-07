@@ -5,11 +5,12 @@
  */
 export class PromptSanitizer {
   private static readonly INJECTION_PATTERNS = [
-    /ignore\s+(all\s+)?(previous|prior|above)\s+instructions/i,
-    /system\s*:\s*/i,
+    /(?:ignore|forget|disregard)\s+(?:all\s+)?(?:previous|prior|above)\s+instructions/i,
+    /system(?:\s+override)?\s*:\s*/i,
     /assistant\s*:\s*/i,
-    /override\s+(red\s*flags?|safety|rules)/i,
+    /override\s+(?:red\s*flags?|safety|rules|instructions)/i,
     /diagnose\s+me\s+with/i,
+    /prescribe\s+(?:me\s+)?/i,
     /you\s+are\s+now\s+a/i,
     /do\s+not\s+call\s+doctor/i,
     /bypass\s+security/i,

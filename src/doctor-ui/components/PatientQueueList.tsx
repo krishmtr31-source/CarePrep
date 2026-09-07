@@ -66,10 +66,15 @@ export const PatientQueueList: React.FC<PatientQueueListProps> = ({
                       {pat?.fullName ? pat.fullName[0] : 'P'}
                     </div>
                     <div>
-                      <h4 className="text-sm font-bold text-slate-900 leading-tight">
-                        {pat?.fullName || 'Patient'}
-                      </h4>
-                      <div className="text-[11px] text-slate-500">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-slate-900 text-emerald-400">
+                          {c.tokenNumber || `C-${100 + (cases.length - cases.indexOf(c))}`}
+                        </span>
+                        <h4 className="text-sm font-bold text-slate-900 leading-tight">
+                          {pat?.fullName || 'Patient'}
+                        </h4>
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">
                         {pat?.age}y • {pat?.gender} • ABHA: {pat?.abhaId ? pat.abhaId.slice(0, 12) + '...' : 'None'}
                       </div>
                     </div>

@@ -1,5 +1,5 @@
 import { ExtractedDocumentData, TimelineEvent, DocumentClassification } from '../../document-intelligence/models/document';
-import { processDocumentText, buildDocumentTimelineEvents } from '../../document-intelligence/parsers/documentPipeline';
+import { processDocumentWithAI, buildDocumentTimelineEvents } from '../../document-intelligence/parsers/documentPipeline';
 import { AgentRequest, AgentResponse, AgentEvidence } from './orchestrationTypes';
 import { evidenceService } from './EvidenceService';
 
@@ -28,8 +28,8 @@ export class DocumentAgent {
     const { rawText, fileName, sourceType, hintType } = request.payload;
 
     try {
-      // 1. Process document text using Phase 2 pipeline
-      const extractedDocument = processDocumentText(rawText, fileName, sourceType, hintType);
+      // 1. Process document text using hybrid AI + deterministic pipeline
+      const extractedDocument = await processDocumentWithAI(rawText, fileName, sourceType, hintType);
       extractedDocument.patientId = request.patientId;
       extractedDocument.caseId = request.sessionId;
 

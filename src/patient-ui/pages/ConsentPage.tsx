@@ -100,7 +100,7 @@ export const ConsentPage: React.FC<ConsentPageProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50 flex flex-col justify-between p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen flex flex-col justify-between p-4 sm:p-6 lg:p-8 relative z-10">
       <div className="max-w-2xl mx-auto w-full my-auto py-6">
         <div className="flex items-center justify-between mb-4">
           <button
@@ -118,7 +118,7 @@ export const ConsentPage: React.FC<ConsentPageProps> = ({
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
               isReadingAudio 
                 ? 'bg-emerald-100 text-emerald-800 border-emerald-300 animate-pulse' 
-                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                : 'bg-white/90 backdrop-blur-md text-slate-700 border-slate-200 hover:bg-slate-50'
             }`}
           >
             <Volume2 className="w-3.5 h-3.5 text-emerald-600" />
@@ -139,7 +139,7 @@ export const ConsentPage: React.FC<ConsentPageProps> = ({
         </div>
 
         {/* Consent Clauses List */}
-        <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200 shadow-sm space-y-3.5">
+        <div className="bg-white/90 backdrop-blur-xl p-5 sm:p-6 rounded-3xl border border-white/60 shadow-xl shadow-slate-900/10 space-y-3.5">
           {consentClauses.map((item, idx) => (
             <div
               key={idx}

@@ -7,6 +7,7 @@ import { DashavidhaParikshaView } from './DashavidhaParikshaView';
 import { DocumentTimelineView } from '../../document-intelligence/components/DocumentTimelineView';
 import { ExtractedEntitiesView } from '../../document-intelligence/components/ExtractedEntitiesView';
 import { OriginalDocumentModal } from '../../document-intelligence/components/OriginalDocumentModal';
+import { PrescriptionEmrModal } from './PrescriptionEmrModal';
 import { 
   Bot, 
   CheckCircle2, 
@@ -15,16 +16,17 @@ import {
   AlertTriangle, 
   FileText, 
   ShieldCheck, 
-  Stethoscope,
-  Activity,
-  FolderOpen,
-  Calendar,
-  Pill,
-  History,
-  AlertCircle,
-  Sparkles,
-  Info,
-  X
+  Stethoscope, 
+  Activity, 
+  FolderOpen, 
+  Calendar, 
+  Pill, 
+  History, 
+  AlertCircle, 
+  Sparkles, 
+  Info, 
+  Printer,
+  X 
 } from 'lucide-react';
 
 interface CaseSummaryReviewProps {
@@ -44,6 +46,7 @@ export const CaseSummaryReview: React.FC<CaseSummaryReviewProps> = ({
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [activeDocForModal, setActiveDocForModal] = useState<ExtractedDocumentData | null>(null);
   const [isRejectModalOpen, setIsRejectModalOpen] = useState<boolean>(false);
+  const [isPrescriptionModalOpen, setIsPrescriptionModalOpen] = useState<boolean>(false);
   const [rejectReason, setRejectReason] = useState<string>('');
 
   // Log audit trail event when summary is opened
@@ -136,17 +139,29 @@ export const CaseSummaryReview: React.FC<CaseSummaryReviewProps> = ({
           </p>
         </div>
 
-        {/* Reviewing Physician Input Box */}
-        <div className="bg-white p-2.5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-2">
-          <Stethoscope className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-          <div className="text-left">
-            <div className="text-[10px] font-bold uppercase text-slate-400">Reviewing Clinician</div>
-            <input
-              type="text"
-              value={doctorName}
-              onChange={(e) => setDoctorName(e.target.value)}
-              className="text-xs font-semibold text-slate-800 bg-transparent outline-none border-b border-transparent focus:border-emerald-500"
-            />
+        {/* Reviewing Physician Input Box & Prescription EMR Export */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsPrescriptionModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition-all flex-shrink-0"
+            title="Generate print-friendly E-Prescription & EMR Summary"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span>Generate Prescription / EMR</span>
+          </button>
+
+          <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-2">
+            <Stethoscope className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+            <div className="text-left">
+              <div className="text-[10px] font-bold uppercase text-slate-400">Reviewing Clinician</div>
+              <input
+                type="text"
+                value={doctorName}
+                onChange={(e) => setDoctorName(e.target.value)}
+                className="text-xs font-semibold text-slate-800 bg-transparent outline-none border-b border-transparent focus:border-emerald-500 w-36 sm:w-44"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -724,6 +739,15 @@ export const CaseSummaryReview: React.FC<CaseSummaryReviewProps> = ({
         <div className="flex items-center gap-2.5 w-full sm:w-auto">
           <button
             type="button"
+            onClick={() => setIsPrescriptionModalOpen(true)}
+            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold transition-colors shadow-sm"
+          >
+            <Printer className="w-4 h-4 text-emerald-700" />
+            <span>Generate Prescription / EMR</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setIsRejectModalOpen(true)}
             className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl border border-rose-200 bg-white hover:bg-rose-50 text-rose-700 text-xs font-bold transition-colors shadow-sm"
           >
@@ -817,6 +841,15 @@ export const CaseSummaryReview: React.FC<CaseSummaryReviewProps> = ({
         <OriginalDocumentModal
           document={activeDocForModal}
           onClose={() => setActiveDocForModal(null)}
+        />
+      )}
+
+      {/* Prescription & EMR Export Modal */}
+      {isPrescriptionModalOpen && (
+        <PrescriptionEmrModal
+          summary={summary}
+          caseRecord={caseRecord}
+          onClose={() => setIsPrescriptionModalOpen(false)}
         />
       )}
     </div>
