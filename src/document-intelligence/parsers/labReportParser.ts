@@ -11,7 +11,7 @@ export interface LabReportParseResult {
   unreliableFields: string[];
 }
 
-export const UNIT_PATTERN = '(?:%|mg\\/dL|g\\/dL|gm\\/dL|gm%|mg%|mmol\\/L|umol\\/L|µmol\\/L|pmol\\/L|nmol\\/L|U\\/L|U\\/mL|U\\/ml|IU\\/L|u\\/l|iu\\/l|uIU\\/mL|µIU\\/mL|mIU\\/L|IU\\/mL|mcg\\/L|g\\/L|mg\\/L|mEq\\/L|meq\\/l|cells\\/cu\\.mm|cells\\/cumm|cells\\/mcL|cells\\/uL|cells\\/[µ\u00b5\u03bc]L|\\/cu\\.mm|\\/cumm|\\/mcL|\\/uL|\\/[µ\u00b5\u03bc]L|cumm|cu\\.mm|mcL|uL|[µ\u00b5\u03bc]L|mill\\/cu\\.mm|mil\\/cumm|mill\\/cumm|million\\/cumm|Lakhs\\/cumm|lakh\\/cumm|Lakhs|x10\\^?\\d+\\/(?:uL|[µ\u00b5\u03bc]L|L)|ng\\/ml|ng\\/dL|ng\\/dl|pg\\/ml|pg\\/dL|pg\\/dl|ug\\/dl|mcg\\/dl|ug\\/L|mcg\\/L|fl|fL|pg|mm\\/hr|mm\\/1st\\s*hr|mm|sec|seconds|INR|ratio|index|\\/HPF|\\/hpf)';
+export const UNIT_PATTERN = '(?:%|mg\\/dL|mg\\/dl|g\\/dL|g\\/dl|gm\\/dL|gm\\/dl|gm%|mg%|mmol\\/L|mmol\\/l|umol\\/L|µmol\\/L|pmol\\/L|nmol\\/L|U\\/L|U\\/mL|U\\/ml|IU\\/L|u\\/l|iu\\/l|uIU\\/mL|µIU\\/mL|mIU\\/L|IU\\/mL|mcg\\/L|g\\/L|mg\\/L|mEq\\/L|meq\\/l|mL\\/min(?:\\/1\\.73m\\^?2)?|ml\\/min|cells\\/cu\\.mm|cells\\/cumm|cells\\/mcL|cells\\/uL|cells\\/[µ\u00b5\u03bc]L|\\/cu\\.mm|\\/cumm|\\/mcL|\\/uL|\\/[µ\u00b5\u03bc]L|cumm|cu\\.mm|mcL|uL|[µ\u00b5\u03bc]L|mill\\/cu\\.mm|mil\\/cumm|mill\\/cumm|million\\/cumm|Lakhs\\/cumm|lakh\\/cumm|Lakhs|x10\\^?\\d+\\/(?:uL|[µ\u00b5\u03bc]L|L)|ng\\/ml|ng\\/dL|ng\\/dl|pg\\/ml|pg\\/dL|pg\\/dl|ug\\/dl|mcg\\/dl|ug\\/L|mcg\\/L|fl|fL|pg|mm\\/hr|mm\\/1st\\s*hr|mm|sec|seconds|INR|ratio|index|\\/HPF|\\/hpf)';
 
 /**
  * Extracts and cleans reference range into a standard numerical interval.
@@ -42,9 +42,11 @@ export function extractReferenceRangeDetails(
   // 1. Remove surrounding enclosing parentheses / brackets / braces: e.g. "( 70.0 - 100.0 mg/dL )" -> "70.0 - 100.0 mg/dL"
   trimmed = trimmed.replace(/^[\(\[\{]\s*(.*?)\s*[\)\]\}]$/, '$1').trim();
 
-  // 2. Identify display string (preserve authentic range from report, clean prefix labels)
+  // 2. Identify display string (preserve authentic range from report, clean prefix labels and leading punctuation)
   let displayRaw = trimmed
-    .replace(/^(?:(?:bio(?:\.|logical)?\s*)?ref(?:\.|erence)?(?:\s*range|\s*interval)?|normal(?:\s*range|\s*interval)?|reference\s*interval)[:\s\-]+/i, '')
+    .replace(/^[\(\[\{]\s*(?:(?:bio(?:\.|logical)?\s*)?ref(?:\.|erence)?(?:\s*range|\s*interval|\s*values?)?|normal(?:\s*range|\s*interval|\s*values?)?|reference\s*(?:interval|range|values?)|desirable(?:\s*range)?|standard(?:\s*range)?|expected(?:\s*values?)?)?[:\s\-]+/i, '')
+    .replace(/^(?:(?:bio(?:\.|logical)?\s*)?ref(?:\.|erence)?(?:\s*range|\s*interval|\s*values?)?|normal(?:\s*range|\s*interval|\s*values?)?|reference\s*(?:interval|range|values?)|desirable(?:\s*range)?|standard(?:\s*range)?|expected(?:\s*values?)?)?[:\s\-]+/i, '')
+    .replace(/^[:\-=\s]+/, '')
     .trim();
 
   if (!displayRaw) displayRaw = trimmed;
@@ -245,10 +247,54 @@ export function parseLabReportText(
       continue;
     }
 
+    // Check if line is part of a Vertical Key-Value Block (Investigation / Observed Value / Reference Range)
+    const invMatch = line.match(/^(?:investigation(?:\s*name)?|test(?:\s*name)?|parameter)\s*[:\-]\s*([A-Za-z0-9\s\(\)\/,–+.-]{2,60})/i);
+    if (invMatch && i + 1 < lines.length) {
+      const nextLine = lines[i + 1];
+      const valMatch = nextLine.match(/^(?:result|observed(?:\s*value)?|value)\s*[:\-]\s*([<>]?\s*\d{1,3}(?:[0-9,])*(?:\.\d+)?)\s*(${UNIT_PATTERN})?/i);
+      if (valMatch) {
+        const testName = invMatch[1].trim();
+        const valStr = valMatch[1].trim();
+        const unit = (valMatch[2] || '').trim();
+        let refRangeStr = '';
+        let step = 1;
+
+        if (i + 2 < lines.length) {
+          const thirdLine = lines[i + 2];
+          const rangeMatch = thirdLine.match(/^(?:(?:bio(?:\.|logical)?\s*)?ref(?:\.|erence)?(?:\s*range|\s*interval|\s*values?)?|normal(?:\s*range|\s*interval|\s*values?)?|reference\s*(?:interval|range|values?)|desirable|expected)?\s*[:\-]\s*(.+)/i);
+          if (rangeMatch) {
+            refRangeStr = rangeMatch[1].trim();
+            step = 2;
+          }
+        }
+
+        const parsedLab = evaluateAndBuildLabResult(
+          testName,
+          valStr,
+          unit,
+          refRangeStr,
+          '',
+          line,
+          docId,
+          docName,
+          extractionMethod,
+          labResults.length + 1,
+          patientGender
+        );
+
+        if (parsedLab && !seenTests.has(parsedLab.testName.toLowerCase())) {
+          seenTests.add(parsedLab.testName.toLowerCase());
+          labResults.push(parsedLab);
+          i += step;
+          continue;
+        }
+      }
+    }
+
     // Check if this line is purely a reference range header or line
-    const isPureRefRangeLabel = /^(?:(?:bio(?:\.|logical)?\s*)?ref(?:\.|erence)?(?:\s*range|\s*interval)?|normal(?:\s*range|\s*interval)?|reference\s*interval)[:\s\-]+/i.test(line);
-    const pureIntervalPattern = /^[\(\[]?\s*(?:(?:male|female|adults?|normal)[:\s]*)?([<>]?\s*\d+(?:\.\d+)?)\s*(?:[-–—~]|to)\s*(\d+(?:\.\d+)?)(?:\s*[A-Za-z/%µ]+)?\s*[\)\]]?$/i;
-    const pureInequalityPattern = /^[\(\[]?\s*[<>]=?\s*\d+(?:\.\d+)?(?:\s*[A-Za-z/%µ]+)?\s*[\)\]]?$/i;
+    const isPureRefRangeLabel = /^[\(\[]?\s*(?:(?:bio(?:\.|logical)?\s*)?ref(?:\.|erence)?(?:\s*range|\s*interval|\s*values?)?|normal(?:\s*range|\s*interval|\s*values?)?|reference\s*(?:interval|range|values?)|desirable(?:\s*range)?|standard(?:\s*range)?|expected(?:\s*values?)?)[:\s\-]+/i.test(line);
+    const pureIntervalPattern = /^[\(\[]?\s*(?:(?:male|female|adults?|normal)[:\s]*)?([<>]?\s*\d+(?:\.\d+)?)\s*(?:[-–—~]|to)\s*(\d+(?:\.\d+)?)(?:\s*[A-Za-z/%µ]+)?(?:\s*[\(\[].*?[\)\]])?\s*[\)\]]?$/i;
+    const pureInequalityPattern = /^[\(\[]?\s*[<>]=?\s*\d+(?:\.\d+)?(?:\s*[A-Za-z/%µ]+)?(?:\s*[\(\[].*?[\)\]])?\s*[\)\]]?$/i;
     const isPureRangeValue = pureIntervalPattern.test(line) || pureInequalityPattern.test(line);
 
     if (isPureRefRangeLabel || isPureRangeValue) {
@@ -289,6 +335,14 @@ export function parseLabReportText(
         line = `${line}    ${lines[i + 1]}`;
         mergedNextLine = true;
       }
+    }
+
+    // Extract any parenthesized or bracketed range embedded in the line e.g. "(70 - 100)" or "(0.6 - 1.2 mg/dL)"
+    let embeddedRange = '';
+    const embeddedRangeMatch = line.match(/[\(\[]\s*(?:(?:bio(?:\.|logical)?\s*)?ref(?:\.|erence)?(?:\s*range|\s*interval)?|normal(?:\s*range)?)?[:\s\-]*([<>]?\s*\d+(?:\.\d+)?\s*(?:[-–—~]|to)\s*\d+(?:\.\d+)?(?:\s*[A-Za-z/%µ]+)?|[<>]=?\s*\d+(?:\.\d+)?(?:\s*[A-Za-z/%µ]+)?)\s*[\)\]]/i);
+    if (embeddedRangeMatch) {
+      embeddedRange = embeddedRangeMatch[1].trim();
+      line = line.replace(embeddedRangeMatch[0], '    ');
     }
 
     // Normalization: convert pipes and tabs to multi-space
@@ -349,6 +403,10 @@ export function parseLabReportText(
       }
 
       if (testName && valStr) {
+        if (!refRangeStr && embeddedRange) {
+          refRangeStr = embeddedRange;
+        }
+
         const parsedLab = evaluateAndBuildLabResult(
           testName,
           valStr,
@@ -392,6 +450,10 @@ export function parseLabReportText(
       if (flagMatch) {
         explicitFlag = flagMatch[1].toUpperCase();
         rangeCandidate = remainder.replace(new RegExp(`\\b${flagMatch[1]}\\b`, 'i'), '').trim();
+      }
+
+      if (!rangeCandidate && embeddedRange) {
+        rangeCandidate = embeddedRange;
       }
 
       const parsedLab = evaluateAndBuildLabResult(
@@ -454,7 +516,9 @@ function evaluateAndBuildLabResult(
   }
 
   // Parse numeric value (handles commas like 7,200 or 2,40,000 -> 240000)
-  const numericVal = parseFloat(rawValCandidate.replace(/,/g, '').replace(/[^0-9.]/g, ''));
+  const cleanVal = rawValCandidate.replace(/^[:\-=\s]+/, '').replace(/[:\-=\s]+$/, '').trim();
+  const cleanUnit = unitCandidate.replace(/^[:\-=\s]+/, '').replace(/[:\-=\s]+$/, '').trim();
+  const numericVal = parseFloat(cleanVal.replace(/,/g, '').replace(/[^0-9.]/g, ''));
   if (isNaN(numericVal)) return null;
 
   // Extract reference range details
@@ -510,10 +574,10 @@ function evaluateAndBuildLabResult(
   return {
     id: `lab-${docId}-${index}`,
     testName: cleanName,
-    resultValue: rawValCandidate,
+    resultValue: cleanVal,
     numericValue: numericVal,
     value: numericVal,
-    unit: unitCandidate,
+    unit: cleanUnit,
     sourceReferenceRange: {
       raw: cleanRefStr,
       min: minVal,
