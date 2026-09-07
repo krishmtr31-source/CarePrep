@@ -43,12 +43,20 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
 
     try {
       const ocrResult = await extractTextFromFile(file, (pct, status) => {
-        setProgressPercent(Math.round(pct * 0.6));
+        setProgressPercent(Math.round(pct * 0.7));
         setProgressStatus(status);
       });
 
-      setProgressPercent(70);
-      setProgressStatus('Analyzing document structure with Gemini 3.6 Flash...');
+      if (ocrResult.isPasswordProtected) {
+        throw new Error(ocrResult.error || 'This PDF is password-protected. Please remove password protection before uploading.');
+      }
+
+      if (ocrResult.error && (!ocrResult.text || ocrResult.text.trim().length === 0)) {
+        throw new Error(ocrResult.error);
+      }
+
+      setProgressPercent(75);
+      setProgressStatus('Analyzing document structure and clinical evidence...');
 
       const processed = await processDocumentWithAI(
         ocrResult.text,

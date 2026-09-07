@@ -17,10 +17,12 @@ export interface SourceEvidence {
 export interface ExtractedMedication {
   id: string;
   name: string;
-  dosage: string; // e.g. "500 mg" or "Not found / Requires verification"
-  frequency: string; // e.g. "Twice daily (BD)" or "Not found / Requires verification"
-  duration: string; // e.g. "30 days" or "Not found / Requires verification"
-  instructions?: string;
+  strength?: string; // e.g. "500 mg", "20 mg"
+  dosage: string; // e.g. "1 tablet" or "500 mg"
+  frequency: string; // e.g. "Twice daily (BD)" or "Once daily (OD)"
+  duration: string; // e.g. "30 days"
+  route?: string; // e.g. "Oral", "Topical"
+  instructions?: string; // e.g. "After food", "Before breakfast"
   evidence: SourceEvidence;
   isAyushMedicine?: boolean;
 }
@@ -37,9 +39,11 @@ export interface ExtractedLabResult {
     min?: number;
     max?: number;
     hasSourceRange: boolean;
+    isAiInferred?: boolean;
+    aiSource?: string;
   };
   referenceRange?: string;
-  flag: 'HIGH' | 'LOW' | 'NORMAL' | 'INDETERMINATE';
+  flag: 'HIGH' | 'LOW' | 'NORMAL' | 'CRITICAL' | 'INDETERMINATE';
   status?: string;
   isAbnormal: boolean;
   source?: string;

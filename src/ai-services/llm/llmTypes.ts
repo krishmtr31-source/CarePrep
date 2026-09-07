@@ -54,7 +54,7 @@ export interface DocumentLabExtraction {
   value: string | number | null;
   unit?: string;
   referenceRange?: string;
-  flag?: 'HIGH' | 'LOW' | 'NORMAL' | 'INDETERMINATE';
+  flag?: 'HIGH' | 'LOW' | 'NORMAL' | 'CRITICAL' | 'INDETERMINATE';
   evidence?: string;
   page?: number;
   confidence?: number;

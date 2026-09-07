@@ -11,7 +11,102 @@ export interface LabReportParseResult {
   unreliableFields: string[];
 }
 
-const UNIT_PATTERN = '(?:%|mg\\/dL|g\\/dL|mmol\\/L|U\\/L|IU\\/L|uIU\\/mL|uIU\\/ml|mIU\\/L|IU\\/mL|pmol\\/L|nmol\\/L|umol\\/L|mcg\\/L|g\\/L|mg\\/L|mEq\\/L|meq\\/l|cells\\/cu\\.mm|cells\\/cumm|cells\\/mcL|cells\\/uL|cells\\/[µ\u00b5\u03bc]L|[µ\u00b5\u03bc]L|uL|mcL|x10\\^?\\d+\\/uL|x10\\^?\\d+\\/[µ\u00b5\u03bc]L|ng\\/ml|pg\\/ml|ug\\/dl|mcg\\/dl|fl|fL|pg|ratio|index)';
+export const UNIT_PATTERN = '(?:%|mg\\/dL|g\\/dL|gm\\/dL|gm%|mg%|mmol\\/L|umol\\/L|µmol\\/L|pmol\\/L|nmol\\/L|U\\/L|U\\/mL|U\\/ml|IU\\/L|u\\/l|iu\\/l|uIU\\/mL|µIU\\/mL|mIU\\/L|IU\\/mL|mcg\\/L|g\\/L|mg\\/L|mEq\\/L|meq\\/l|cells\\/cu\\.mm|cells\\/cumm|cells\\/mcL|cells\\/uL|cells\\/[µ\u00b5\u03bc]L|\\/cu\\.mm|\\/cumm|\\/mcL|\\/uL|\\/[µ\u00b5\u03bc]L|cumm|cu\\.mm|mcL|uL|[µ\u00b5\u03bc]L|mill\\/cu\\.mm|mil\\/cumm|mill\\/cumm|million\\/cumm|Lakhs\\/cumm|lakh\\/cumm|Lakhs|x10\\^?\\d+\\/(?:uL|[µ\u00b5\u03bc]L|L)|ng\\/ml|ng\\/dL|ng\\/dl|pg\\/ml|pg\\/dL|pg\\/dl|ug\\/dl|mcg\\/dl|ug\\/L|mcg\\/L|fl|fL|pg|mm\\/hr|mm\\/1st\\s*hr|mm|sec|seconds|INR|ratio|index|\\/HPF|\\/hpf)';
+
+/**
+ * Extracts and cleans reference range into a standard numerical interval.
+ * Returns { hasRange: boolean, raw: string, min?: number, max?: number }
+ */
+export function extractReferenceRangeDetails(str: string): {
+  hasRange: boolean;
+  raw: string;
+  min?: number;
+  max?: number;
+} {
+  if (!str) return { hasRange: false, raw: 'Not specified in report' };
+
+  let clean = str
+    .replace(/^[\(\[\{]\s*(?:ref(?:\.|erence)?(?:\s*range|\s*interval)?|normal(?:\s*range)?|bio(?:\.|logical)?\s*ref(?:\.|erence)?(?:\s*range|\s*interval)?)?[:\s]*/i, '')
+    .replace(/[\)\]\}]$/, '')
+    .replace(/^(?:ref(?:\.|erence)?(?:\s*range|\s*interval)?|normal(?:\s*range)?|bio(?:\.|logical)?\s*ref(?:\.|erence)?(?:\s*range|\s*interval)?)?[:\s]*/i, '')
+    .trim();
+
+  // Strip unit from end if present
+  clean = clean.replace(new RegExp(`\\s*${UNIT_PATTERN}\\s*$`, 'i'), '').trim();
+
+  // Pattern 1: Numerical interval with hyphen, dash, tilde or "to" (e.g. "70.0 - 100.0", "70 to 100", "0.7–1.3", "13.0 - 17.0")
+  const intervalMatch = clean.match(/(?:(?:male|female|adults?|normal)[:\s]*)?([<>]?\s*\d{1,3}(?:[0-9,])*(?:\.\d+)?|\d+(?:\.\d+)?)\s*(?:[-–—~]|to)\s*(\d{1,3}(?:[0-9,])*(?:\.\d+)?|\d+(?:\.\d+)?)/i);
+  if (intervalMatch) {
+    const minStr = intervalMatch[1].replace(/[^0-9.]/g, '').trim();
+    const maxStr = intervalMatch[2].replace(/[^0-9.]/g, '').trim();
+    const min = parseFloat(minStr);
+    const max = parseFloat(maxStr);
+    if (!isNaN(min) && !isNaN(max)) {
+      return {
+        hasRange: true,
+        raw: `${minStr} - ${maxStr}`,
+        min,
+        max
+      };
+    }
+  }
+
+  // Pattern 2: Inequality Less Than (e.g. "< 200", "<= 140", "Up to 140", "Upto 140", "Desirable: < 200")
+  const lessMatch = clean.match(/(?:<|<=|less\s+than|up\s*to|upto)\s*(\d{1,3}(?:[0-9,])*(?:\.\d+)?|\d+(?:\.\d+)?)/i);
+  if (lessMatch) {
+    const maxStr = lessMatch[1].replace(/[^0-9.]/g, '').trim();
+    const max = parseFloat(maxStr);
+    if (!isNaN(max)) {
+      return {
+        hasRange: true,
+        raw: `< ${maxStr}`,
+        max
+      };
+    }
+  }
+
+  // Pattern 3: Inequality Greater Than (e.g. "> 40", ">= 60", "Greater than 50")
+  const greaterMatch = clean.match(/(?:>|>=|greater\s+than)\s*(\d{1,3}(?:[0-9,])*(?:\.\d+)?|\d+(?:\.\d+)?)/i);
+  if (greaterMatch) {
+    const minStr = greaterMatch[1].replace(/[^0-9.]/g, '').trim();
+    const min = parseFloat(minStr);
+    if (!isNaN(min)) {
+      return {
+        hasRange: true,
+        raw: `> ${minStr}`,
+        min
+      };
+    }
+  }
+
+  return { hasRange: false, raw: 'Not specified in report' };
+}
+
+/**
+ * Cleans OCR artifacts, dot leaders, numbering prefixes, and normalizes medical test names.
+ */
+export function cleanTestName(name: string): string {
+  let cleaned = name
+    .replace(/^[-*#•·▪■\d.)\s]+/, '') // Strip leading numbering e.g. "1.", "01.", "1)"
+    .replace(/^(?:test(?:\s*name)?|investigation|parameter|analyte)[:\s]+/i, '') // Strip label prefixes
+    .replace(/\.{2,}/g, ' ') // Strip dot leaders e.g. "Hemoglobin ........"
+    .replace(/[|:;]+$/g, '') // Strip trailing punctuation
+    .replace(/^[|:;]+/g, '')
+    .trim();
+
+  // Normalize common medical acronyms and prefixes
+  cleaned = cleaned
+    .replace(/\bS\.\s*/i, 'Serum ')
+    .replace(/\bB\.\s*Urea\b/i, 'Blood Urea')
+    .replace(/\bR\.?B\.?C\.?\s*(?:count)?\b/i, 'RBC Count')
+    .replace(/\bW\.?B\.?C\.?\s*(?:count)?\b/i, 'WBC Count')
+    .replace(/\bT\.?L\.?C\.?\b/i, 'Total Leucocyte Count (TLC)')
+    .replace(/\bHaemoglobin\b/i, 'Hemoglobin')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  return cleaned;
+}
 
 export function parseLabReportText(
   rawText: string,
@@ -93,56 +188,101 @@ export function parseLabReportText(
     // Normalization: convert pipes and tabs to multi-space
     const normalizedLine = line.replace(/[|\t]/g, '    ');
 
-    // Attempt 1: Multi-column split by 2+ spaces
-    const cols = normalizedLine.split(/\s{2,}/).map(c => c.trim()).filter(Boolean);
+    // Strategy 1: Multi-column parsing with dynamic role classification
+    const rawCols = normalizedLine.split(/\s{2,}/).map(c => c.trim()).filter(Boolean);
 
-    if (cols.length >= 3) {
-      const testNameCandidate = cols[0];
-      const rawValCandidate = cols[1];
-      const unitCandidate = cols[2];
-      const rawRefRangeCandidate = cols[3] || '';
-      const explicitFlag = (cols[4] || (cols[3] && /^(HIGH|LOW|NORMAL|ABNORMAL|BORDERLINE)$/i.test(cols[3]) ? cols[3] : '')).toUpperCase();
+    if (rawCols.length >= 2) {
+      let testName = '';
+      let valStr = '';
+      let unit = '';
+      let refRangeStr = '';
+      let explicitFlag = '';
+      const unclassified: string[] = [];
 
-      const parsedLab = evaluateAndBuildLabResult(
-        testNameCandidate,
-        rawValCandidate,
-        unitCandidate,
-        rawRefRangeCandidate,
-        explicitFlag,
-        line,
-        docId,
-        docName,
-        extractionMethod,
-        labResults.length + 1
-      );
+      for (let cIdx = 0; cIdx < rawCols.length; cIdx++) {
+        const col = rawCols[cIdx];
+        const rangeCheck = extractReferenceRangeDetails(col);
 
-      if (parsedLab && !seenTests.has(parsedLab.testName.toLowerCase())) {
-        seenTests.add(parsedLab.testName.toLowerCase());
-        labResults.push(parsedLab);
-        continue;
+        if (rangeCheck.hasRange) {
+          refRangeStr = col;
+          continue;
+        }
+
+        if (/^(?:HIGH|LOW|NORMAL|ABNORMAL|BORDERLINE|CRITICAL|DESIRABLE|OPTIMAL|H|L|\*|▲|▼)$/i.test(col)) {
+          explicitFlag = col.toUpperCase();
+          continue;
+        }
+
+        if (new RegExp(`^${UNIT_PATTERN}$`, 'i').test(col)) {
+          unit = col;
+          continue;
+        }
+
+        // Check if value + unit together e.g. "220 mg/dL"
+        const valUnitMatch = col.match(new RegExp(`^([<>]?\\s*\\d{1,3}(?:[0-9,])*(?:\\.\\d+)?)\\s*(${UNIT_PATTERN})$`, 'i'));
+        if (valUnitMatch) {
+          valStr = valUnitMatch[1].trim();
+          if (!unit) unit = valUnitMatch[2].trim();
+          continue;
+        }
+
+        // Numeric value e.g. "145.0" or "2,40,000"
+        if (/^[<>]?\\s*\\d{1,3}(?:[0-9,])*(?:\\.\\d+)?$/.test(col) && !valStr) {
+          valStr = col;
+          continue;
+        }
+
+        unclassified.push(col);
+      }
+
+      if (unclassified.length > 0) {
+        testName = unclassified[0];
+        if (!valStr && unclassified.length > 1) {
+          valStr = unclassified[1];
+        }
+      }
+
+      if (testName && valStr) {
+        const parsedLab = evaluateAndBuildLabResult(
+          testName,
+          valStr,
+          unit,
+          refRangeStr,
+          explicitFlag,
+          line,
+          docId,
+          docName,
+          extractionMethod,
+          labResults.length + 1
+        );
+
+        if (parsedLab && !seenTests.has(parsedLab.testName.toLowerCase())) {
+          seenTests.add(parsedLab.testName.toLowerCase());
+          labResults.push(parsedLab);
+          continue;
+        }
       }
     }
 
-    // Attempt 2: Flexible Regex for colon-formatted or single-spaced rows
-    const lineRegex = new RegExp(
-      `^([A-Za-z0-9\\s\\(\\)\\/,–-]+?)(?:\\s*[:\\-]\\s*|\\s{2,}|\\s+)(\\d{1,3}(?:,\\d{3})*(?:\\.\\d+)?|\\d+(?:\\.\\d+)?)\\s*(${UNIT_PATTERN})\\b(?:\\s*\\(?([<>]?\\s*\\d{1,3}(?:,\\d{3})*(?:\\.\\d+)?(?:\\s*[-–—]\\s*\\d{1,3}(?:,\\d{3})*(?:\\.\\d+)?)?(?:\\s*${UNIT_PATTERN})?)\\)?)?(?:\\s+(HIGH|LOW|NORMAL|ABNORMAL|BORDERLINE|CRITICAL|DESIRABLE|OPTIMAL))?`,
+    // Strategy 2: Flexible pattern matching for single-spaced rows, colons, or dot leaders
+    const linePattern = new RegExp(
+      `^([A-Za-z0-9\\s\\(\\)\\/,–+.-]+?)(?:\\s*[:=\\-]\\s*|\\s{2,}|\\.{2,}\\s*|\\s+)([<>]?\\s*\\d{1,3}(?:[0-9,])*(?:\\.\\d+)?)\\s*(${UNIT_PATTERN})?(?:\\s+|\\b)(?:([\\(\\[]?.*?[\\)\\]]?))?$`,
       'i'
     );
 
-    const match = line.match(lineRegex);
-    if (match) {
-      const testName = match[1].trim();
-      const rawVal = match[2].trim();
-      const unit = match[3].trim();
-      const rawRef = match[4] ? match[4].trim() : '';
-      const explicitFlag = match[5] ? match[5].toUpperCase() : '';
+    const m = line.match(linePattern);
+    if (m) {
+      const rawName = m[1];
+      const rawVal = m[2];
+      const rawUnit = m[3] || '';
+      const remainder = m[4] || '';
 
       const parsedLab = evaluateAndBuildLabResult(
-        testName,
+        rawName,
         rawVal,
-        unit,
-        rawRef,
-        explicitFlag,
+        rawUnit,
+        remainder,
+        '',
         line,
         docId,
         docName,
@@ -181,13 +321,10 @@ function evaluateAndBuildLabResult(
   extractionMethod: 'PDF_TEXT' | 'OCR' | 'SAMPLE',
   index: number
 ): ExtractedLabResult | null {
-  // Validate test name (allow letters, numbers, spaces, hyphens, slashes, parentheses)
-  const cleanName = testNameCandidate
-    .replace(/^[-\*\d\.\s#]+/, '')
-    .replace(/[-–:,\s|]+$/, '')
-    .trim();
+  const cleanName = cleanTestName(testNameCandidate);
 
-  if (cleanName.length < 2 || cleanName.length > 70 || /[=\{\}\\_~^\|<>@\$\*]/.test(cleanName)) {
+  // Validate test name length and quality
+  if (cleanName.length < 2 || cleanName.length > 70) {
     return null;
   }
 
@@ -196,39 +333,16 @@ function evaluateAndBuildLabResult(
     return null;
   }
 
-  // Parse numeric value (handles commas like 7,200 -> 7200)
+  // Parse numeric value (handles commas like 7,200 or 2,40,000 -> 240000)
   const numericVal = parseFloat(rawValCandidate.replace(/,/g, '').replace(/[^0-9.]/g, ''));
   if (isNaN(numericVal)) return null;
 
-  // Parse reference range
-  let minVal: number | undefined;
-  let maxVal: number | undefined;
-  let hasSourceRange = false;
-  let cleanRefStr = rawRefRangeCandidate.trim();
-
-  if (cleanRefStr && !/^(HIGH|LOW|NORMAL|ABNORMAL|BORDERLINE)$/i.test(cleanRefStr)) {
-    // Range: 13.0–17.0 or 4,500–11,000
-    const rangeMatch = cleanRefStr.match(/(\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*[-–—]\s*(\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)/);
-    if (rangeMatch) {
-      minVal = parseFloat(rangeMatch[1].replace(/,/g, ''));
-      maxVal = parseFloat(rangeMatch[2].replace(/,/g, ''));
-      hasSourceRange = true;
-    } else {
-      // Less than: < 200 or < 5.7
-      const lessMatch = cleanRefStr.match(/(?:<|<=|less\s+than)\s*(\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)/i);
-      if (lessMatch) {
-        maxVal = parseFloat(lessMatch[1].replace(/,/g, ''));
-        hasSourceRange = true;
-      } else {
-        // Greater than: > 40
-        const greaterMatch = cleanRefStr.match(/(?:>|>=|greater\s+than)\s*(\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)/i);
-        if (greaterMatch) {
-          minVal = parseFloat(greaterMatch[1].replace(/,/g, ''));
-          hasSourceRange = true;
-        }
-      }
-    }
-  }
+  // Extract reference range details
+  const refDetails = extractReferenceRangeDetails(rawRefRangeCandidate);
+  const minVal = refDetails.min;
+  const maxVal = refDetails.max;
+  const hasSourceRange = refDetails.hasRange;
+  const cleanRefStr = refDetails.raw;
 
   // Abnormality determination strictly based on document-provided source reference range
   let flag: 'HIGH' | 'LOW' | 'NORMAL' | 'INDETERMINATE' = 'NORMAL';
@@ -250,11 +364,11 @@ function evaluateAndBuildLabResult(
       status = 'normal';
     }
   } else if (explicitFlag) {
-    if (/HIGH|ABNORMAL|ELEVATED/i.test(explicitFlag)) {
+    if (/HIGH|ABNORMAL|ELEVATED|\*|▲/i.test(explicitFlag)) {
       flag = 'HIGH';
       isAbnormal = true;
       status = 'high';
-    } else if (/LOW|DECREASED/i.test(explicitFlag)) {
+    } else if (/LOW|DECREASED|▼/i.test(explicitFlag)) {
       flag = 'LOW';
       isAbnormal = true;
       status = 'low';
@@ -268,11 +382,9 @@ function evaluateAndBuildLabResult(
       status = 'normal';
     }
   } else {
-    // If no reference range in document, mark INDETERMINATE (do not invent reference ranges)
     flag = 'INDETERMINATE';
     isAbnormal = false;
     status = 'unknown';
-    cleanRefStr = 'Not specified in report';
   }
 
   return {
@@ -283,12 +395,12 @@ function evaluateAndBuildLabResult(
     value: numericVal,
     unit: unitCandidate,
     sourceReferenceRange: {
-      raw: hasSourceRange ? cleanRefStr : (cleanRefStr || 'Not specified in report'),
+      raw: cleanRefStr,
       min: minVal,
       max: maxVal,
       hasSourceRange
     },
-    referenceRange: hasSourceRange ? cleanRefStr : (cleanRefStr || 'Not specified in report'),
+    referenceRange: cleanRefStr,
     flag,
     status,
     isAbnormal,

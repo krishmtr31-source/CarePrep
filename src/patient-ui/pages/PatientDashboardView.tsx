@@ -871,6 +871,13 @@ export const PatientDashboardView: React.FC<PatientDashboardViewProps> = ({
 
               <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
                 <button
+                  onClick={() => setIsPhase3UploadOpen(true)}
+                  className="inline-flex items-center gap-2 px-4 py-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs sm:text-sm shadow-xs transition-colors"
+                >
+                  <FileText className="w-4 h-4 text-emerald-600" />
+                  <span>Scan &amp; OCR Document</span>
+                </button>
+                <button
                   onClick={() => setActiveTab('clinical-summary')}
                   className="inline-flex items-center gap-2 px-4 py-3 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs sm:text-sm shadow-xs transition-colors"
                 >
@@ -887,14 +894,14 @@ export const PatientDashboardView: React.FC<PatientDashboardViewProps> = ({
               </div>
             </div>
 
-            {/* Top Stat Cards: Profile Completion, Upcoming Appointment, Assessment Status */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Top Stat Cards: Profile Completion, Upcoming Appointment, Assessment Status, OCR Scanner */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               
               {/* Card 1: Dynamic Profile Completion */}
               <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-2xs flex flex-col justify-between">
                 <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                    Profile Completion
+                    Health Profile
                   </span>
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
                     completionPercentage >= 80 
@@ -1005,6 +1012,35 @@ export const PatientDashboardView: React.FC<PatientDashboardViewProps> = ({
                   className="text-xs font-semibold text-emerald-600 hover:text-emerald-800 text-left pt-2 border-t border-slate-100 flex items-center justify-between"
                 >
                   <span>{assessmentState === 'Submitted to Doctor' ? 'Update Assessment' : 'Start Assessment'}</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Card 4: Medical Document OCR Scanner */}
+              <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-2xs flex flex-col justify-between">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Document OCR
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md text-emerald-700 bg-emerald-50">
+                    Client-Side OCR
+                  </span>
+                </div>
+
+                <div className="py-4 space-y-1">
+                  <div className="text-xs font-bold text-slate-900 truncate">
+                    Prescription &amp; Lab OCR
+                  </div>
+                  <p className="text-[11px] text-slate-500 line-clamp-2">
+                    Instant text extraction from PDF, JPG, PNG &amp; WebP with local privacy protection.
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => setIsPhase3UploadOpen(true)}
+                  className="text-xs font-semibold text-emerald-600 hover:text-emerald-800 text-left pt-2 border-t border-slate-100 flex items-center justify-between"
+                >
+                  <span>Open OCR Studio</span>
                   <ChevronRight className="w-3.5 h-3.5" />
                 </button>
               </div>

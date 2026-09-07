@@ -280,5 +280,81 @@ export async function handleGeminiApiRequest(
     return true;
   }
 
+  // 5. Recommended Reference Range Inference endpoint: POST /api/ai/reference-range
+  // Infers recommended reference intervals using Gemini API when OCR or document ranges are missing/unclear.
+  if (url === '/api/ai/reference-range' && req.method === 'POST') {
+    res.setHeader('Content-Type', 'application/json');
+    let body = '';
+
+    req.on('data', chunk => {
+      body += chunk;
+      if (body.length > 1e6) {
+        req.destroy(); // 1MB payload safety guard
+      }
+    });
+
+    req.on('end', async () => {
+      try {
+        let payload: any;
+        try {
+          payload = JSON.parse(body || '{}');
+        } catch {
+          res.statusCode = 400;
+          res.end(JSON.stringify({
+            success: false,
+            error: 'Malformed JSON payload.',
+            code: 400
+          }));
+          return;
+        }
+
+        let testsToProcess: Array<{ testName: string; value: string; unit?: string }> = [];
+        if (Array.isArray(payload.tests)) {
+          testsToProcess = payload.tests;
+        } else if (payload.testName) {
+          testsToProcess = [{
+            testName: payload.testName,
+            value: payload.value || '0',
+            unit: payload.unit || ''
+          }];
+        }
+
+        if (testsToProcess.length === 0) {
+          res.statusCode = 400;
+          res.end(JSON.stringify({
+            success: false,
+            error: 'Missing tests array in request body.',
+            code: 400
+          }));
+          return;
+        }
+
+        const { medicalDocumentService } = await import('../services/medicalDocumentService');
+        const ranges = await medicalDocumentService.inferReferenceRangesWithGemini(testsToProcess);
+
+        res.statusCode = 200;
+        res.end(JSON.stringify({
+          success: true,
+          ranges,
+          count: ranges.length,
+          model: medicalDocumentService.getModelName()
+        }));
+      } catch (err: any) {
+        const classified = classifyGeminiError(err);
+        console.warn(`[GeminiApiHandler] /api/ai/reference-range error: [${classified.code}] ${classified.sanitizedDiagnostic}`);
+        res.statusCode = classified.httpStatus;
+        res.end(JSON.stringify({
+          success: false,
+          code: classified.code,
+          error: classified.message,
+          fallbackAvailable: true
+        }));
+      }
+    });
+
+    return true;
+  }
+
   return false;
 }
+

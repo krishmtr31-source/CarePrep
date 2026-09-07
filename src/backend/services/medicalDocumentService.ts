@@ -162,7 +162,7 @@ Extract all explicitly documented clinical information into a strictly valid JSO
       "testName": "Exact investigation name",
       "value": "Exact value as printed",
       "unit": "Exact unit as printed",
-      "referenceRange": "Reference range as printed, or null",
+      "referenceRange": "Numeric reference range as printed in document. If missing or unclear in document, provide standard medical numeric range (e.g. '70 - 99' or '< 140')",
       "flag": "NORMAL | HIGH | LOW | ABNORMAL | UNCLEAR | null"
     }
   ],
@@ -184,7 +184,7 @@ Extract all explicitly documented clinical information into a strictly valid JSO
 STRICT INSTRUCTIONS:
 1. If the document does not contain a field, return null or an empty array. NEVER fabricate data.
 2. If document type is uncertain, classify as "OTHER".
-3. For laboratory reports: Do not independently calculate whether a value is normal unless the document provides a reference range or explicitly marks it.
+3. For laboratory reports: Extract the reference range as printed in the document. CRITICAL: If the recommended or reference range is NOT clearly stated, smudged, or missing in the document, supply standard medical numeric reference ranges for that test (e.g. Fasting Blood Glucose: '70 - 99', HbA1c: '4.0 - 5.6', Creatinine: '0.7 - 1.3') and evaluate the abnormality flag (NORMAL, HIGH, LOW, ABNORMAL) accordingly. Do not append AI labels or explanatory text inside referenceRange.
 4. For prescriptions: Extract only what is visible. Do not recommend additional medication.
 5. For discharge summaries: Preserve exact wording for diagnoses, procedures, and follow-up.
 6. For radiology reports: Keep the radiologist's findings and impression wording.
@@ -400,7 +400,248 @@ STRICT INSTRUCTIONS:
       extractionWarnings
     };
   }
+
+  /**
+   * Resolves recommended reference ranges for laboratory investigations where the document
+   * reference range is unclear, missing, or indeterminate, utilizing the Gemini API with
+   * clinical benchmark fallbacks.
+   */
+  public async inferReferenceRangesWithGemini(
+    tests: Array<{ testName: string; value: string; unit?: string }>
+  ): Promise<InferredReferenceRangeResult[]> {
+    if (!Array.isArray(tests) || tests.length === 0) {
+      return [];
+    }
+
+    const sanitizedTests = tests.map(t => ({
+      testName: String(t.testName || '').trim(),
+      value: String(t.value || '').trim(),
+      unit: String(t.unit || '').trim()
+    })).filter(t => t.testName.length > 0);
+
+    if (sanitizedTests.length === 0) {
+      return [];
+    }
+
+    // Helper: evaluate benchmark fallback for a single test
+    const evaluateBenchmark = (testName: string, valueStr: string, unitStr?: string): InferredReferenceRangeResult => {
+      const lower = testName.toLowerCase().trim();
+      let matchedBenchmark: { min?: number; max?: number; unit: string; raw: string } | undefined;
+
+      for (const [key, b] of Object.entries(STANDARD_CLINICAL_BENCHMARKS)) {
+        if (lower === key || lower.includes(key) || key.includes(lower)) {
+          matchedBenchmark = b;
+          break;
+        }
+      }
+
+      const cleanVal = parseFloat(valueStr.replace(/,/g, ''));
+      const unit = unitStr || matchedBenchmark?.unit || '';
+
+      if (!matchedBenchmark) {
+        return {
+          testName,
+          value: valueStr,
+          unit,
+          referenceRange: 'Standard clinical range required',
+          flag: 'INDETERMINATE',
+          isAbnormal: false,
+          source: 'CLINICAL_BENCHMARK',
+          rationale: 'Specialized test requires physician or lab verification.'
+        };
+      }
+
+      let flag: 'NORMAL' | 'HIGH' | 'LOW' | 'CRITICAL' = 'NORMAL';
+      let isAbnormal = false;
+
+      if (!isNaN(cleanVal)) {
+        if (matchedBenchmark.max !== undefined && cleanVal > matchedBenchmark.max) {
+          flag = cleanVal > (matchedBenchmark.max * 1.5) ? 'CRITICAL' : 'HIGH';
+          isAbnormal = true;
+        } else if (matchedBenchmark.min !== undefined && cleanVal < matchedBenchmark.min) {
+          flag = cleanVal < (matchedBenchmark.min * 0.5) ? 'CRITICAL' : 'LOW';
+          isAbnormal = true;
+        }
+      }
+
+      return {
+        testName,
+        value: valueStr,
+        unit: unit || matchedBenchmark.unit,
+        referenceRange: matchedBenchmark.raw,
+        min: matchedBenchmark.min,
+        max: matchedBenchmark.max,
+        flag,
+        isAbnormal,
+        source: 'CLINICAL_BENCHMARK',
+        rationale: `Standard clinical baseline benchmark for ${testName}.`
+      };
+    };
+
+    // If Gemini mock mode or client not available, resolve using clinical benchmarks
+    if (isGeminiMockMode()) {
+      return sanitizedTests.map(t => evaluateBenchmark(t.testName, t.value, t.unit));
+    }
+
+    const client = this.getClient();
+    if (!client) {
+      return sanitizedTests.map(t => evaluateBenchmark(t.testName, t.value, t.unit));
+    }
+
+    const systemInstruction = `You are a board-certified clinical pathologist and laboratory medicine expert.
+Given a list of laboratory test investigations with their patient values and units, determine standard adult biological reference intervals when the printed document ranges are unclear or absent.
+Always provide the standard clinical reference interval, numeric minimum, and numeric maximum where applicable.
+Compare the patient value with this reference interval and determine the clinical status flag (NORMAL, HIGH, LOW, or CRITICAL).
+If value exceeds the upper reference limit, flag as HIGH or CRITICAL and set isAbnormal to true.
+Output MUST be a strictly valid JSON array of objects.`;
+
+    const userPrompt = `Laboratory investigations requiring recommended clinical reference ranges:
+${JSON.stringify(sanitizedTests, null, 2)}
+
+Provide the recommended reference ranges formatted as a JSON array matching this exact schema:
+[
+  {
+    "testName": "Investigation Name",
+    "value": "Patient Value",
+    "unit": "Unit",
+    "referenceRange": "Numeric range only e.g. '70 - 99' or '< 140' or '0.7 - 1.3'",
+    "min": number or null,
+    "max": number or null,
+    "flag": "NORMAL | HIGH | LOW | CRITICAL",
+    "isAbnormal": boolean,
+    "rationale": "Brief 1-sentence clinical context"
+  }
+]`;
+
+    try {
+      const response = await client.models.generateContent({
+        model: this.getModelName(),
+        contents: [{ text: userPrompt }],
+        config: {
+          systemInstruction,
+          responseMimeType: 'application/json',
+          temperature: 0.1
+        }
+      });
+
+      const responseText = response.text || '';
+      let parsed: any;
+      try {
+        parsed = JSON.parse(responseText.trim());
+      } catch (jsonErr) {
+        const cleaned = responseText.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+        parsed = JSON.parse(cleaned);
+      }
+
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return sanitizedTests.map((t, idx) => {
+          const aiItem = parsed.find((p: any) => p.testName && p.testName.toLowerCase().includes(t.testName.toLowerCase())) || parsed[idx];
+          if (aiItem && aiItem.referenceRange) {
+            let rawRef = String(aiItem.referenceRange).replace(/\s*\([^)]*\)/g, '').replace(/\s*(?:gemini|ai|recommended|standard).*$/i, '').trim();
+            if (!rawRef) rawRef = aiItem.referenceRange;
+
+            const isAbnormal = Boolean(aiItem.isAbnormal || aiItem.flag === 'HIGH' || aiItem.flag === 'LOW' || aiItem.flag === 'CRITICAL');
+            return {
+              testName: t.testName,
+              value: t.value,
+              unit: aiItem.unit || t.unit,
+              referenceRange: rawRef,
+              min: typeof aiItem.min === 'number' ? aiItem.min : undefined,
+              max: typeof aiItem.max === 'number' ? aiItem.max : undefined,
+              flag: (['NORMAL', 'HIGH', 'LOW', 'CRITICAL'].includes(aiItem.flag) ? aiItem.flag : isAbnormal ? 'HIGH' : 'NORMAL') as any,
+              isAbnormal,
+              source: 'GEMINI_AI',
+              rationale: aiItem.rationale || 'Standard clinical reference interval.'
+            };
+          }
+          return evaluateBenchmark(t.testName, t.value, t.unit);
+        });
+      }
+    } catch (err: any) {
+      const classified = classifyGeminiError(err);
+      console.warn(`[MedicalDocumentService] inferReferenceRangesWithGemini failed, falling back to clinical benchmarks: [${classified.code}] ${classified.sanitizedDiagnostic}`);
+    }
+
+    // Fallback on error
+    return sanitizedTests.map(t => evaluateBenchmark(t.testName, t.value, t.unit));
+  }
 }
+
+export interface InferredReferenceRangeResult {
+  testName: string;
+  value: string;
+  unit: string;
+  referenceRange: string;
+  min?: number;
+  max?: number;
+  flag: 'NORMAL' | 'HIGH' | 'LOW' | 'CRITICAL' | 'INDETERMINATE';
+  isAbnormal: boolean;
+  source: 'GEMINI_AI' | 'CLINICAL_BENCHMARK';
+  rationale?: string;
+}
+
+export const STANDARD_CLINICAL_BENCHMARKS: Record<string, { min?: number; max?: number; unit: string; raw: string }> = {
+  'fasting blood sugar': { min: 70, max: 99, unit: 'mg/dL', raw: '70 - 99' },
+  'fasting glucose': { min: 70, max: 99, unit: 'mg/dL', raw: '70 - 99' },
+  'glucose fasting': { min: 70, max: 99, unit: 'mg/dL', raw: '70 - 99' },
+  'blood glucose': { min: 70, max: 99, unit: 'mg/dL', raw: '70 - 99' },
+  'postprandial glucose': { min: 0, max: 140, unit: 'mg/dL', raw: '< 140' },
+  'pp blood sugar': { min: 0, max: 140, unit: 'mg/dL', raw: '< 140' },
+  'random blood sugar': { min: 70, max: 140, unit: 'mg/dL', raw: '70 - 140' },
+  'glucose random': { min: 70, max: 140, unit: 'mg/dL', raw: '70 - 140' },
+  'hba1c': { min: 4.0, max: 5.6, unit: '%', raw: '4.0 - 5.6' },
+  'glycated hemoglobin': { min: 4.0, max: 5.6, unit: '%', raw: '4.0 - 5.6' },
+  'serum creatinine': { min: 0.7, max: 1.3, unit: 'mg/dL', raw: '0.7 - 1.3' },
+  'creatinine': { min: 0.7, max: 1.3, unit: 'mg/dL', raw: '0.7 - 1.3' },
+  'blood urea nitrogen': { min: 7, max: 20, unit: 'mg/dL', raw: '7 - 20' },
+  'bun': { min: 7, max: 20, unit: 'mg/dL', raw: '7 - 20' },
+  'blood urea': { min: 15, max: 40, unit: 'mg/dL', raw: '15 - 40' },
+  'urea': { min: 15, max: 40, unit: 'mg/dL', raw: '15 - 40' },
+  'uric acid': { min: 3.5, max: 7.2, unit: 'mg/dL', raw: '3.5 - 7.2' },
+  'total cholesterol': { min: 0, max: 200, unit: 'mg/dL', raw: '< 200' },
+  'cholesterol': { min: 0, max: 200, unit: 'mg/dL', raw: '< 200' },
+  'triglycerides': { min: 0, max: 150, unit: 'mg/dL', raw: '< 150' },
+  'hdl': { min: 40, max: 100, unit: 'mg/dL', raw: '> 40' },
+  'hdl cholesterol': { min: 40, max: 100, unit: 'mg/dL', raw: '> 40' },
+  'ldl': { min: 0, max: 100, unit: 'mg/dL', raw: '< 100' },
+  'ldl cholesterol': { min: 0, max: 100, unit: 'mg/dL', raw: '< 100' },
+  'vldl': { min: 2, max: 30, unit: 'mg/dL', raw: '2 - 30' },
+  'hemoglobin': { min: 12.0, max: 16.0, unit: 'g/dL', raw: '12.0 - 16.0' },
+  'hb': { min: 12.0, max: 16.0, unit: 'g/dL', raw: '12.0 - 16.0' },
+  'wbc': { min: 4000, max: 11000, unit: 'cells/µL', raw: '4,000 - 11,000' },
+  'total leukocyte count': { min: 4000, max: 11000, unit: 'cells/µL', raw: '4,000 - 11,000' },
+  'tlc': { min: 4000, max: 11000, unit: 'cells/µL', raw: '4,000 - 11,000' },
+  'platelet count': { min: 150000, max: 450000, unit: 'cells/µL', raw: '150,000 - 450,000' },
+  'platelets': { min: 150000, max: 450000, unit: 'cells/µL', raw: '150,000 - 450,000' },
+  'bilirubin total': { min: 0.2, max: 1.2, unit: 'mg/dL', raw: '0.2 - 1.2' },
+  'total bilirubin': { min: 0.2, max: 1.2, unit: 'mg/dL', raw: '0.2 - 1.2' },
+  'direct bilirubin': { min: 0.0, max: 0.3, unit: 'mg/dL', raw: '0.0 - 0.3' },
+  'sgpt': { min: 7, max: 56, unit: 'U/L', raw: '7 - 56' },
+  'alt': { min: 7, max: 56, unit: 'U/L', raw: '7 - 56' },
+  'alt/sgpt': { min: 7, max: 56, unit: 'U/L', raw: '7 - 56' },
+  'sgot': { min: 10, max: 40, unit: 'U/L', raw: '10 - 40' },
+  'ast': { min: 10, max: 40, unit: 'U/L', raw: '10 - 40' },
+  'ast/sgot': { min: 10, max: 40, unit: 'U/L', raw: '10 - 40' },
+  'alkaline phosphatase': { min: 44, max: 147, unit: 'U/L', raw: '44 - 147' },
+  'alp': { min: 44, max: 147, unit: 'U/L', raw: '44 - 147' },
+  'total protein': { min: 6.0, max: 8.3, unit: 'g/dL', raw: '6.0 - 8.3' },
+  'albumin': { min: 3.5, max: 5.0, unit: 'g/dL', raw: '3.5 - 5.0' },
+  'potassium': { min: 3.5, max: 5.0, unit: 'mmol/L', raw: '3.5 - 5.0' },
+  'serum potassium': { min: 3.5, max: 5.0, unit: 'mmol/L', raw: '3.5 - 5.0' },
+  'sodium': { min: 135, max: 145, unit: 'mmol/L', raw: '135 - 145' },
+  'serum sodium': { min: 135, max: 145, unit: 'mmol/L', raw: '135 - 145' },
+  'calcium': { min: 8.5, max: 10.5, unit: 'mg/dL', raw: '8.5 - 10.5' },
+  'tsh': { min: 0.4, max: 4.0, unit: 'uIU/mL', raw: '0.4 - 4.0' },
+  'thyroid stimulating hormone': { min: 0.4, max: 4.0, unit: 'uIU/mL', raw: '0.4 - 4.0' },
+  'esr': { min: 0, max: 20, unit: 'mm/hr', raw: '0 - 20' },
+  'crp': { min: 0, max: 5.0, unit: 'mg/L', raw: '< 5.0' },
+  'c-reactive protein': { min: 0, max: 5.0, unit: 'mg/L', raw: '< 5.0' },
+  'troponin i': { min: 0, max: 0.04, unit: 'ng/mL', raw: '< 0.04' },
+  'troponin-i': { min: 0, max: 0.04, unit: 'ng/mL', raw: '< 0.04' },
+  'ferritin': { min: 20, max: 250, unit: 'ng/mL', raw: '20 - 250' },
+  'vitamin d': { min: 30, max: 100, unit: 'ng/mL', raw: '30 - 100' },
+  'vitamin b12': { min: 200, max: 900, unit: 'pg/mL', raw: '200 - 900' }
+};
 
 export const medicalDocumentService = new MedicalDocumentService();
 

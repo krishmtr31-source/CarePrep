@@ -18,6 +18,7 @@ import {
   Pill, 
   Activity,
   CheckCircle2,
+  SlidersHorizontal,
   Lock
 } from 'lucide-react';
 import { 
@@ -81,6 +82,7 @@ export const MedicalDocumentReviewModal: React.FC<MedicalDocumentReviewModalProp
   const [extractionWarnings] = useState<string[]>(
     initialExtraction.extractionWarnings ? [...initialExtraction.extractionWarnings] : []
   );
+  const [isInferringRanges, setIsInferringRanges] = useState<boolean>(false);
 
   if (!isOpen) return null;
 
@@ -100,6 +102,43 @@ export const MedicalDocumentReviewModal: React.FC<MedicalDocumentReviewModalProp
 
   const handleRemoveLab = (index: number) => {
     setLabResults(labResults.filter((_, i) => i !== index));
+  };
+
+  const handleInferMissingRanges = async () => {
+    if (labResults.length === 0) return;
+    setIsInferringRanges(true);
+    try {
+      const res = await fetch('/api/ai/reference-range', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tests: labResults.map(l => ({ testName: l.testName, value: l.value, unit: l.unit }))
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.ranges)) {
+          const map = new Map<string, any>();
+          data.ranges.forEach((r: any) => map.set(r.testName.toLowerCase().trim(), r));
+          setLabResults(prev => prev.map(l => {
+            const matched = map.get(l.testName.toLowerCase().trim());
+            if (matched && (!l.referenceRange || l.referenceRange === '—' || l.referenceRange === 'Not specified in report')) {
+              return {
+                ...l,
+                referenceRange: matched.referenceRange,
+                flag: matched.flag || l.flag,
+                unit: matched.unit || l.unit
+              };
+            }
+            return l;
+          }));
+        }
+      }
+    } catch (err) {
+      console.warn('[MedicalDocumentReviewModal] Infer ranges error:', err);
+    } finally {
+      setIsInferringRanges(false);
+    }
   };
 
   // Medication handlers
@@ -421,14 +460,26 @@ export const MedicalDocumentReviewModal: React.FC<MedicalDocumentReviewModalProp
                 </h4>
               </div>
               {isEditing && (
-                <button
-                  type="button"
-                  onClick={handleAddLab}
-                  className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-800"
-                >
-                  <Plus className="w-3 h-3" />
-                  <span>Add Result</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleInferMissingRanges}
+                    disabled={isInferringRanges}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-300 transition-colors disabled:opacity-60 shadow-2xs"
+                    title="Auto-fill standard recommended reference ranges for missing or unclear test values"
+                  >
+                    <SlidersHorizontal className={`w-3 h-3 ${isInferringRanges ? 'animate-spin' : 'text-slate-600'}`} />
+                    <span>{isInferringRanges ? 'Detecting ranges...' : 'Auto-Detect Ranges'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAddLab}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-800"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Add Result</span>
+                  </button>
+                </div>
               )}
             </div>
 
