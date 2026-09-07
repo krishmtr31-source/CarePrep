@@ -182,14 +182,13 @@ export const MedicalDocumentUploadModal: React.FC<MedicalDocumentUploadModalProp
       setExtractedData(parsed);
       setEditableRawText(result.text);
 
-      // If any lab results have unclear, missing, or inferred reference ranges, query Gemini API in background to enrich ranges
-      const hasUnclearRanges = parsed.labResults.some(l => 
+      // If any lab results truly lack an OCR document reference range, query Gemini API in background to enrich only those missing
+      const testsMissingDocRange = parsed.labResults.filter(l => 
         !l.sourceReferenceRange.hasSourceRange || 
-        l.sourceReferenceRange.isAiInferred || 
-        l.sourceReferenceRange.raw === 'Not specified in report' || 
-        l.flag === 'INDETERMINATE'
+        !l.sourceReferenceRange.raw || 
+        l.sourceReferenceRange.raw === 'Not specified in report'
       );
-      if (hasUnclearRanges) {
+      if (testsMissingDocRange.length > 0) {
         setIsInferringRanges(true);
         enrichLabResultsWithGeminiRanges(parsed.labResults).then(enrichedLabs => {
           setExtractedData(prev => prev ? { ...prev, labResults: enrichedLabs } : null);
@@ -254,13 +253,12 @@ export const MedicalDocumentUploadModal: React.FC<MedicalDocumentUploadModalProp
     const parsed = extractStructuredMedicalData(editableRawText, selectedFile.name);
     setExtractedData(parsed);
 
-    const hasUnclearRanges = parsed.labResults.some(l => 
+    const testsMissingDocRange = parsed.labResults.filter(l => 
       !l.sourceReferenceRange.hasSourceRange || 
-      l.sourceReferenceRange.isAiInferred || 
-      l.sourceReferenceRange.raw === 'Not specified in report' || 
-      l.flag === 'INDETERMINATE'
+      !l.sourceReferenceRange.raw || 
+      l.sourceReferenceRange.raw === 'Not specified in report'
     );
-    if (hasUnclearRanges) {
+    if (testsMissingDocRange.length > 0) {
       setIsInferringRanges(true);
       enrichLabResultsWithGeminiRanges(parsed.labResults).then(enrichedLabs => {
         setExtractedData(prev => prev ? { ...prev, labResults: enrichedLabs } : null);

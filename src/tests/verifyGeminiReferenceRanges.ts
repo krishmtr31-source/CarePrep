@@ -89,6 +89,7 @@ Total Cholesterol: 245 mg/dL
   const reportWithExplicitRange = `
 INVESTIGATION       RESULT   UNITS    REFERENCE RANGE
 Hemoglobin          14.2     g/dL     13.0 - 17.0
+Fasting Blood Sugar 115      mg/dL    65 - 110
 `;
   const parsedExplicit = extractStructuredMedicalData(reportWithExplicitRange, 'standard-report.pdf');
   const hb = parsedExplicit.labResults.find(l => l.testName.toLowerCase().includes('hemoglobin'));
@@ -96,6 +97,12 @@ Hemoglobin          14.2     g/dL     13.0 - 17.0
   assert(hb?.sourceReferenceRange.hasSourceRange === true, 'Explicit range hasSourceRange = true');
   assert(Boolean(hb?.sourceReferenceRange.raw.includes('13.0 - 17.0')), `Explicit raw range preserved: ${hb?.sourceReferenceRange?.raw}`);
   assert(hb?.sourceReferenceRange.isAiInferred !== true, 'Explicit range is not marked as AI inferred');
+
+  const fbgExplicit = parsedExplicit.labResults.find(l => l.testName.toLowerCase().includes('fasting'));
+  assert(Boolean(fbgExplicit), 'Found Fasting Blood Sugar in explicit report');
+  assert(fbgExplicit?.sourceReferenceRange.hasSourceRange === true, 'Custom OCR range hasSourceRange = true');
+  assert(fbgExplicit?.sourceReferenceRange.raw === '65 - 110', `Custom printed range 65 - 110 preserved instead of standard 70 - 99: ${fbgExplicit?.sourceReferenceRange.raw}`);
+  assert(fbgExplicit?.flag === 'HIGH', `Fasting blood sugar 115 against custom OCR range 65 - 110 flagged as HIGH: ${fbgExplicit?.flag}`);
 
   // --- TEST 4: Backend POST /api/ai/reference-range HTTP endpoint ---
   console.log('\n--- TEST 4: HTTP POST /api/ai/reference-range Endpoint ---');

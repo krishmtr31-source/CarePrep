@@ -105,14 +105,15 @@ export const MedicalDocumentReviewModal: React.FC<MedicalDocumentReviewModalProp
   };
 
   const handleInferMissingRanges = async () => {
-    if (labResults.length === 0) return;
+    const missingTests = labResults.filter(l => !l.referenceRange || l.referenceRange === '—' || l.referenceRange === 'Not specified in report');
+    if (missingTests.length === 0) return;
     setIsInferringRanges(true);
     try {
       const res = await fetch('/api/ai/reference-range', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tests: labResults.map(l => ({ testName: l.testName, value: l.value, unit: l.unit }))
+          tests: missingTests.map(l => ({ testName: l.testName, value: l.value, unit: l.unit }))
         })
       });
       if (res.ok) {
@@ -121,8 +122,12 @@ export const MedicalDocumentReviewModal: React.FC<MedicalDocumentReviewModalProp
           const map = new Map<string, any>();
           data.ranges.forEach((r: any) => map.set(r.testName.toLowerCase().trim(), r));
           setLabResults(prev => prev.map(l => {
+            // Strictly preserve existing ranges if already present
+            if (l.referenceRange && l.referenceRange !== '—' && l.referenceRange !== 'Not specified in report') {
+              return l;
+            }
             const matched = map.get(l.testName.toLowerCase().trim());
-            if (matched && (!l.referenceRange || l.referenceRange === '—' || l.referenceRange === 'Not specified in report')) {
+            if (matched) {
               return {
                 ...l,
                 referenceRange: matched.referenceRange,

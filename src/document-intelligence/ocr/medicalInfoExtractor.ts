@@ -291,45 +291,41 @@ export function extractStructuredMedicalData(
   // Parse lab results
   const labParseResult = parseLabReportText(rawText, docId, fileName, 'OCR');
   const labResults = labParseResult.labResults.map(lab => {
-    // If report has no clear printed reference range, supply baseline clinical benchmark
-    if (!lab.sourceReferenceRange.hasSourceRange || lab.sourceReferenceRange.raw === 'Not specified in report' || lab.flag === 'INDETERMINATE') {
-      const lower = lab.testName.toLowerCase().trim();
-      let matchedBenchmark: { min?: number; max?: number; unit: string; raw: string } | undefined;
-      for (const [k, b] of Object.entries(CLINICAL_BENCHMARKS)) {
-        if (lower === k || lower.includes(k) || k.includes(lower)) {
-          matchedBenchmark = b;
-          break;
+    // If report already has a valid source reference range from document OCR, ALWAYS USE THIS RANGE!
+    if (lab.sourceReferenceRange.hasSourceRange && lab.sourceReferenceRange.raw && lab.sourceReferenceRange.raw !== 'Not specified in report') {
+      return lab;
+    }
+
+    // Only if report has no clear printed reference range, supply baseline clinical benchmark
+    const matchedBenchmark = findClinicalBenchmark(lab.testName);
+    if (matchedBenchmark) {
+      let flag: 'NORMAL' | 'HIGH' | 'LOW' | 'CRITICAL' = 'NORMAL';
+      let isAbnormal = false;
+      if (lab.numericValue !== undefined) {
+        if (matchedBenchmark.max !== undefined && lab.numericValue > matchedBenchmark.max) {
+          flag = lab.numericValue > (matchedBenchmark.max * 1.5) ? 'CRITICAL' : 'HIGH';
+          isAbnormal = true;
+        } else if (matchedBenchmark.min !== undefined && lab.numericValue < matchedBenchmark.min) {
+          flag = lab.numericValue < (matchedBenchmark.min * 0.5) ? 'CRITICAL' : 'LOW';
+          isAbnormal = true;
         }
       }
-      if (matchedBenchmark) {
-        let flag: 'NORMAL' | 'HIGH' | 'LOW' | 'CRITICAL' = 'NORMAL';
-        let isAbnormal = false;
-        if (lab.numericValue !== undefined) {
-          if (matchedBenchmark.max !== undefined && lab.numericValue > matchedBenchmark.max) {
-            flag = lab.numericValue > (matchedBenchmark.max * 1.5) ? 'CRITICAL' : 'HIGH';
-            isAbnormal = true;
-          } else if (matchedBenchmark.min !== undefined && lab.numericValue < matchedBenchmark.min) {
-            flag = lab.numericValue < (matchedBenchmark.min * 0.5) ? 'CRITICAL' : 'LOW';
-            isAbnormal = true;
-          }
-        }
-        return {
-          ...lab,
-          unit: lab.unit || matchedBenchmark.unit,
-          referenceRange: matchedBenchmark.raw,
-          sourceReferenceRange: {
-            raw: matchedBenchmark.raw,
-            min: matchedBenchmark.min,
-            max: matchedBenchmark.max,
-            hasSourceRange: false,
-            isAiInferred: true,
-            aiSource: 'CLINICAL_BENCHMARK'
-          },
-          flag,
-          status: flag.toLowerCase(),
-          isAbnormal
-        };
-      }
+      return {
+        ...lab,
+        unit: lab.unit || matchedBenchmark.unit,
+        referenceRange: matchedBenchmark.raw,
+        sourceReferenceRange: {
+          raw: matchedBenchmark.raw,
+          min: matchedBenchmark.min,
+          max: matchedBenchmark.max,
+          hasSourceRange: false,
+          isAiInferred: true,
+          aiSource: 'CLINICAL_BENCHMARK'
+        },
+        flag,
+        status: flag.toLowerCase(),
+        isAbnormal
+      };
     }
     return lab;
   });
@@ -514,16 +510,54 @@ export const CLINICAL_BENCHMARKS: Record<string, { min?: number; max?: number; u
 };
 
 /**
+ * Accurately matches a test name against authoritative clinical benchmarks (ADA, IFCC, NABL).
+ * Uses exact match first, then word boundaries to prevent incorrect substring matches.
+ */
+export function findClinicalBenchmark(testName: string): { min?: number; max?: number; unit: string; raw: string } | undefined {
+  if (!testName) return undefined;
+  const raw = testName.toLowerCase().trim();
+  const normalized = raw
+    .replace(/^s(?:erum)?\.?\s+/i, '')
+    .replace(/^b(?:lood)?\.?\s+/i, '')
+    .replace(/[\(\)\[\],:]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // 1. Direct exact key match
+  if (CLINICAL_BENCHMARKS[raw]) return CLINICAL_BENCHMARKS[raw];
+  if (CLINICAL_BENCHMARKS[normalized]) return CLINICAL_BENCHMARKS[normalized];
+
+  // 2. Multi-word phrase matching with priority to longer specific keys
+  const sortedKeys = Object.keys(CLINICAL_BENCHMARKS).sort((a, b) => b.length - a.length);
+
+  for (const key of sortedKeys) {
+    if (key.length >= 2) {
+      if (raw === key || normalized === key) {
+        return CLINICAL_BENCHMARKS[key];
+      }
+      const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const keyRegex = new RegExp(`(?:^|\\b)${escapedKey}(?:\\b|$)`, 'i');
+      if (keyRegex.test(raw) || keyRegex.test(normalized)) {
+        return CLINICAL_BENCHMARKS[key];
+      }
+    }
+  }
+
+  return undefined;
+}
+
+/**
  * Asynchronously enriches laboratory results with Gemini recommended reference ranges
- * whenever source reference ranges are unclear, missing, or indeterminate.
+ * strictly only for investigations that DO NOT have an OCR document reference range.
  */
 export async function enrichLabResultsWithGeminiRanges(
   labResults: ExtractedLabResult[]
 ): Promise<ExtractedLabResult[]> {
+  // Only infer for tests that truly lack a document-provided reference range
   const needsInference = labResults.filter(l => 
     !l.sourceReferenceRange.hasSourceRange || 
-    l.sourceReferenceRange.raw === 'Not specified in report' || 
-    l.flag === 'INDETERMINATE'
+    !l.sourceReferenceRange.raw || 
+    l.sourceReferenceRange.raw === 'Not specified in report'
   );
 
   if (needsInference.length === 0) {
@@ -552,8 +586,8 @@ export async function enrichLabResultsWithGeminiRanges(
         }
 
         return labResults.map(l => {
-          // If report already provided a source reference range, strictly preserve it!
-          if (l.sourceReferenceRange.hasSourceRange && l.sourceReferenceRange.raw !== 'Not specified in report') {
+          // If report already provided an OCR source reference range, STRICTLY PRESERVE IT!
+          if (l.sourceReferenceRange.hasSourceRange && l.sourceReferenceRange.raw && l.sourceReferenceRange.raw !== 'Not specified in report') {
             return l;
           }
 
