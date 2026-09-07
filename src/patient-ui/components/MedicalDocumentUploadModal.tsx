@@ -19,7 +19,6 @@ import {
   Edit3,
   ShieldAlert,
   AlertTriangle,
-  SlidersHorizontal,
   Table as TableIcon,
   AlignLeft,
   Calendar,
@@ -37,8 +36,7 @@ import {
 } from '../../document-intelligence/ocr/textExtractor';
 import { 
   extractStructuredMedicalData, 
-  StructuredOcrMedicalData,
-  enrichLabResultsWithGeminiRanges
+  StructuredOcrMedicalData
 } from '../../document-intelligence/ocr/medicalInfoExtractor';
 import { 
   copyOcrSummaryToClipboard, 
@@ -98,7 +96,6 @@ export const MedicalDocumentUploadModal: React.FC<MedicalDocumentUploadModalProp
   const [ocrResult, setOcrResult] = useState<OcrResult | null>(null);
   const [extractedData, setExtractedData] = useState<StructuredOcrMedicalData | null>(null);
   const [editableRawText, setEditableRawText] = useState<string>('');
-  const [isInferringRanges, setIsInferringRanges] = useState<boolean>(false);
   const [isSavingToDb, setIsSavingToDb] = useState<boolean>(false);
   const [dbSaveSuccess, setDbSaveSuccess] = useState<string | null>(null);
 
@@ -180,28 +177,11 @@ export const MedicalDocumentUploadModal: React.FC<MedicalDocumentUploadModalProp
         return;
       }
 
-      // Deterministically parse structured medical information
+      // Deterministically parse structured medical information strictly from OCR text
       const parsed = extractStructuredMedicalData(result.text, file.name);
       setOcrResult(result);
       setExtractedData(parsed);
       setEditableRawText(result.text);
-
-      // If any lab results truly lack an OCR document reference range, query Gemini API in background to enrich only those missing
-      const testsMissingDocRange = parsed.labResults.filter(l => 
-        !l.sourceReferenceRange.hasSourceRange || 
-        !l.sourceReferenceRange.raw || 
-        l.sourceReferenceRange.raw === 'Not specified in report'
-      );
-      if (testsMissingDocRange.length > 0) {
-        setIsInferringRanges(true);
-        enrichLabResultsWithGeminiRanges(parsed.labResults).then(enrichedLabs => {
-          setExtractedData(prev => prev ? { ...prev, labResults: enrichedLabs } : null);
-        }).catch(err => {
-          console.warn('[MedicalDocumentUploadModal] Error enriching ranges with Gemini:', err);
-        }).finally(() => {
-          setIsInferringRanges(false);
-        });
-      }
 
       if (result.confidence < 0.50 || parsed.quality.readability === 'LOW_CONFIDENCE') {
         setModalState('POOR_QUALITY_LOW_CONFIDENCE');
@@ -256,35 +236,6 @@ export const MedicalDocumentUploadModal: React.FC<MedicalDocumentUploadModalProp
     if (!editableRawText || !selectedFile) return;
     const parsed = extractStructuredMedicalData(editableRawText, selectedFile.name);
     setExtractedData(parsed);
-
-    const testsMissingDocRange = parsed.labResults.filter(l => 
-      !l.sourceReferenceRange.hasSourceRange || 
-      !l.sourceReferenceRange.raw || 
-      l.sourceReferenceRange.raw === 'Not specified in report'
-    );
-    if (testsMissingDocRange.length > 0) {
-      setIsInferringRanges(true);
-      enrichLabResultsWithGeminiRanges(parsed.labResults).then(enrichedLabs => {
-        setExtractedData(prev => prev ? { ...prev, labResults: enrichedLabs } : null);
-      }).catch(err => {
-        console.warn('[MedicalDocumentUploadModal] Error enriching ranges with Gemini:', err);
-      }).finally(() => {
-        setIsInferringRanges(false);
-      });
-    }
-  };
-
-  const handleInferRangesWithGemini = async () => {
-    if (!extractedData || extractedData.labResults.length === 0) return;
-    setIsInferringRanges(true);
-    try {
-      const enrichedLabs = await enrichLabResultsWithGeminiRanges(extractedData.labResults);
-      setExtractedData({ ...extractedData, labResults: enrichedLabs });
-    } catch (err) {
-      console.warn('[MedicalDocumentUploadModal] Manual Gemini range inference failed:', err);
-    } finally {
-      setIsInferringRanges(false);
-    }
   };
 
   const handleCopySummary = async () => {
@@ -967,16 +918,6 @@ export const MedicalDocumentUploadModal: React.FC<MedicalDocumentUploadModalProp
                                 <span>Extracted Laboratory Investigations ({extractedData.labResults.length})</span>
                               </h4>
                               <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={handleInferRangesWithGemini}
-                                  disabled={isInferringRanges}
-                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-300 transition-colors disabled:opacity-60 shadow-2xs"
-                                  title="Auto-fill standard recommended reference ranges for missing or unclear test values"
-                                >
-                                  <SlidersHorizontal className={`w-3 h-3 ${isInferringRanges ? 'animate-spin' : 'text-slate-600'}`} />
-                                  <span>{isInferringRanges ? 'Detecting ranges...' : 'Auto-Detect Ranges'}</span>
-                                </button>
                                 <button
                                   type="button"
                                   onClick={handleAddLabRow}

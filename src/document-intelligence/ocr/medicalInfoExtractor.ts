@@ -288,47 +288,9 @@ export function extractStructuredMedicalData(
   const classificationResult = classifyDocumentText(rawText);
   const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
 
-  // Parse lab results
+  // Parse lab results strictly using recommended reference ranges from OCR extracted text
   const labParseResult = parseLabReportText(rawText, docId, fileName, 'OCR');
-  const labResults = labParseResult.labResults.map(lab => {
-    // If report already has a valid source reference range from document OCR, ALWAYS USE THIS RANGE!
-    if (lab.sourceReferenceRange.hasSourceRange && lab.sourceReferenceRange.raw && lab.sourceReferenceRange.raw !== 'Not specified in report') {
-      return lab;
-    }
-
-    // Only if report has no clear printed reference range, supply baseline clinical benchmark
-    const matchedBenchmark = findClinicalBenchmark(lab.testName);
-    if (matchedBenchmark) {
-      let flag: 'NORMAL' | 'HIGH' | 'LOW' | 'CRITICAL' = 'NORMAL';
-      let isAbnormal = false;
-      if (lab.numericValue !== undefined) {
-        if (matchedBenchmark.max !== undefined && lab.numericValue > matchedBenchmark.max) {
-          flag = lab.numericValue > (matchedBenchmark.max * 1.5) ? 'CRITICAL' : 'HIGH';
-          isAbnormal = true;
-        } else if (matchedBenchmark.min !== undefined && lab.numericValue < matchedBenchmark.min) {
-          flag = lab.numericValue < (matchedBenchmark.min * 0.5) ? 'CRITICAL' : 'LOW';
-          isAbnormal = true;
-        }
-      }
-      return {
-        ...lab,
-        unit: lab.unit || matchedBenchmark.unit,
-        referenceRange: matchedBenchmark.raw,
-        sourceReferenceRange: {
-          raw: matchedBenchmark.raw,
-          min: matchedBenchmark.min,
-          max: matchedBenchmark.max,
-          hasSourceRange: false,
-          isAiInferred: true,
-          aiSource: 'CLINICAL_BENCHMARK'
-        },
-        flag,
-        status: flag.toLowerCase(),
-        isAbnormal
-      };
-    }
-    return lab;
-  });
+  const labResults = labParseResult.labResults;
 
   // Parse medications
   const medications = extractStructuredPrescriptions(rawText, docId, fileName);
@@ -547,87 +509,13 @@ export function findClinicalBenchmark(testName: string): { min?: number; max?: n
 }
 
 /**
- * Asynchronously enriches laboratory results with Gemini recommended reference ranges
- * strictly only for investigations that DO NOT have an OCR document reference range.
+ * Returns laboratory results without Gemini AI alteration.
+ * Strictly uses recommended ranges extracted from OCR text.
  */
 export async function enrichLabResultsWithGeminiRanges(
   labResults: ExtractedLabResult[]
 ): Promise<ExtractedLabResult[]> {
-  // Only infer for tests that truly lack a document-provided reference range
-  const needsInference = labResults.filter(l => 
-    !l.sourceReferenceRange.hasSourceRange || 
-    !l.sourceReferenceRange.raw || 
-    l.sourceReferenceRange.raw === 'Not specified in report'
-  );
-
-  if (needsInference.length === 0) {
-    return labResults;
-  }
-
-  try {
-    const res = await fetch('/api/ai/reference-range', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        tests: needsInference.map(l => ({
-          testName: l.testName,
-          value: l.resultValue,
-          unit: l.unit
-        }))
-      })
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && Array.isArray(data.ranges)) {
-        const rangeMap = new Map<string, any>();
-        for (const r of data.ranges) {
-          rangeMap.set(r.testName.toLowerCase().trim(), r);
-        }
-
-        return labResults.map(l => {
-          // If report already provided an OCR source reference range, STRICTLY PRESERVE IT!
-          if (l.sourceReferenceRange.hasSourceRange && l.sourceReferenceRange.raw && l.sourceReferenceRange.raw !== 'Not specified in report') {
-            return l;
-          }
-
-          const lLower = l.testName.toLowerCase().trim();
-          let matched = rangeMap.get(lLower);
-          if (!matched) {
-            for (const [key, r] of rangeMap.entries()) {
-              if (lLower.includes(key) || key.includes(lLower)) {
-                matched = r;
-                break;
-              }
-            }
-          }
-
-          if (matched && matched.referenceRange) {
-            return {
-              ...l,
-              unit: matched.unit || l.unit,
-              referenceRange: matched.referenceRange,
-              sourceReferenceRange: {
-                raw: matched.referenceRange,
-                min: matched.min,
-                max: matched.max,
-                hasSourceRange: false,
-                isAiInferred: true,
-                aiSource: matched.source || 'GEMINI_AI'
-              },
-              flag: matched.flag || l.flag,
-              isAbnormal: Boolean(matched.isAbnormal),
-              status: (matched.flag || l.flag).toLowerCase()
-            };
-          }
-          return l;
-        });
-      }
-    }
-  } catch (fetchErr) {
-    console.warn('[medicalInfoExtractor] Gemini reference range enrichment network error, keeping benchmark fallback:', fetchErr);
-  }
-
+  // Gemini AI is disabled for reference ranges. Only OCR extracted text ranges are used.
   return labResults;
 }
 
