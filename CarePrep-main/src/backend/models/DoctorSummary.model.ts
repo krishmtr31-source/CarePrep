@@ -1,0 +1,223 @@
+import mongoose, { Schema, Document, Model } from 'mongoose';
+import { IntakeMode } from '../../data-models/intake';
+import { LanguageCode } from './Patient.model';
+
+export interface IDoctorSummary extends Document {
+  caseId: string;
+  patientId: string;
+  patientName: string;
+  age: number;
+  gender: string;
+  abhaId?: string;
+  selectedLanguage: LanguageCode;
+  mode: IntakeMode;
+  dateGenerated: Date;
+
+  chiefComplaint: {
+    normalizedText: string;
+    rawPatientVerbatim: string;
+    isAiNormalized: boolean;
+    provenanceTag: 'PATIENT_REPORTED' | 'AI_INTERPRETED_VERIFY';
+  };
+
+  hpiStructured: {
+    onset?: string;
+    duration?: string;
+    location?: string;
+    character?: string;
+    severity?: string;
+    aggravatingFactors?: string;
+    relievingFactors?: string;
+    associatedSymptoms?: string;
+  };
+
+  patientVerbatimStatements: Array<{
+    step: string;
+    rawText: string;
+    modality: 'VOICE' | 'TYPED' | 'TOUCH_CHIP';
+  }>;
+
+  extractedMedications: Array<Record<string, unknown>>;
+  medicationConflicts: Array<{
+    medicationName: string;
+    patientStatement: string;
+    documentStatement: string;
+    sourceDocument: string;
+    conflictType: string;
+    actionRequired: string;
+  }>;
+
+  previousDiagnoses: Array<Record<string, unknown>>;
+  investigationResults: Array<Record<string, unknown>>;
+  abnormalLabFindings: Array<Record<string, unknown>>;
+  timelineEvents: Array<Record<string, unknown>>;
+
+  ayushAssessment?: {
+    prakriti?: string;
+    vikriti?: string;
+    agni?: string;
+    koshtha?: string;
+    aharaShakti?: string;
+    vyayamaShakti?: string;
+    patientReportedNotes?: string;
+  };
+
+  redFlagTriage: {
+    hasTriggered: boolean;
+    status: 'GREEN' | 'RED';
+    alerts: Array<Record<string, unknown>>;
+    statusNotice: string;
+  };
+
+  verificationItems: string[];
+  provisionalTags: string[];
+  clinicalDisclaimer: string;
+
+  currentVersionNumber: number;
+  versions: Array<{
+    versionNumber: number;
+    createdAt: Date;
+    authoredBy: 'AI_DRAFT' | 'PHYSICIAN';
+    status: 'DRAFT' | 'ACCEPTED' | 'MODIFIED' | 'REJECTED';
+    physicianNotes?: string;
+    doctorName?: string;
+    summaryTextSnapshot?: string;
+  }>;
+  auditTrail: Array<{
+    timestamp: Date;
+    action: 'GENERATED' | 'OPENED' | 'EDITED' | 'ACCEPTED' | 'REJECTED';
+    doctorName?: string;
+    details?: string;
+  }>;
+  doctorEdits?: {
+    physicianNotes?: string;
+    status?: 'DRAFT' | 'ACCEPTED' | 'MODIFIED' | 'REJECTED';
+    verifiedByDoctorName?: string;
+  };
+
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const DoctorSummarySchema = new Schema<IDoctorSummary>({
+  caseId: {
+    type: String,
+    required: true,
+    unique: true,
+    index: true
+  },
+  patientId: {
+    type: String,
+    required: true,
+    index: true
+  },
+  patientName: { type: String, required: true },
+  age: { type: Number, required: true },
+  gender: { type: String, required: true },
+  abhaId: { type: String },
+  selectedLanguage: {
+    type: String,
+    enum: ['en', 'hi', 'ta'],
+    default: 'en'
+  },
+  mode: {
+    type: String,
+    enum: ['GENERAL_CLINICAL', 'AYUSH'],
+    required: true
+  },
+  dateGenerated: {
+    type: Date,
+    default: Date.now
+  },
+  chiefComplaint: {
+    normalizedText: { type: String, required: true },
+    rawPatientVerbatim: { type: String, required: true },
+    isAiNormalized: { type: Boolean, default: false },
+    provenanceTag: {
+      type: String,
+      enum: ['PATIENT_REPORTED', 'AI_INTERPRETED_VERIFY'],
+      default: 'PATIENT_REPORTED'
+    }
+  },
+  hpiStructured: {
+    onset: String,
+    duration: String,
+    location: String,
+    character: String,
+    severity: String,
+    aggravatingFactors: String,
+    relievingFactors: String,
+    associatedSymptoms: String
+  },
+  patientVerbatimStatements: [{
+    step: String,
+    rawText: String,
+    modality: { type: String, enum: ['VOICE', 'TYPED', 'TOUCH_CHIP'] }
+  }],
+  extractedMedications: [Schema.Types.Mixed],
+  medicationConflicts: [{
+    medicationName: String,
+    patientStatement: String,
+    documentStatement: String,
+    sourceDocument: String,
+    conflictType: String,
+    actionRequired: String
+  }],
+  previousDiagnoses: [Schema.Types.Mixed],
+  investigationResults: [Schema.Types.Mixed],
+  abnormalLabFindings: [Schema.Types.Mixed],
+  timelineEvents: [Schema.Types.Mixed],
+  ayushAssessment: {
+    prakriti: String,
+    vikriti: String,
+    agni: String,
+    koshtha: String,
+    aharaShakti: String,
+    vyayamaShakti: String,
+    patientReportedNotes: String
+  },
+  redFlagTriage: {
+    hasTriggered: { type: Boolean, default: false },
+    status: { type: String, enum: ['GREEN', 'RED'], default: 'GREEN' },
+    alerts: [Schema.Types.Mixed],
+    statusNotice: { type: String, default: 'Green triage status. Standard OPD queue.' }
+  },
+  verificationItems: [String],
+  provisionalTags: [String],
+  clinicalDisclaimer: {
+    type: String,
+    default: 'Provisional intake brief generated by CarePrep AI. Requires physician verification before clinical decision-making.'
+  },
+  currentVersionNumber: {
+    type: Number,
+    default: 1
+  },
+  versions: [{
+    versionNumber: { type: Number, required: true },
+    createdAt: { type: Date, default: Date.now },
+    authoredBy: { type: String, enum: ['AI_DRAFT', 'PHYSICIAN'], default: 'AI_DRAFT' },
+    status: { type: String, enum: ['DRAFT', 'ACCEPTED', 'MODIFIED', 'REJECTED'], default: 'DRAFT' },
+    physicianNotes: String,
+    doctorName: String,
+    summaryTextSnapshot: String
+  }],
+  auditTrail: [{
+    timestamp: { type: Date, default: Date.now },
+    action: { type: String, enum: ['GENERATED', 'OPENED', 'EDITED', 'ACCEPTED', 'REJECTED'] },
+    doctorName: String,
+    details: String
+  }],
+  doctorEdits: {
+    physicianNotes: String,
+    status: { type: String, enum: ['DRAFT', 'ACCEPTED', 'MODIFIED', 'REJECTED'] },
+    verifiedByDoctorName: String
+  }
+}, {
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
+});
+
+export const DoctorSummary: Model<IDoctorSummary> = mongoose.models.DoctorSummary || mongoose.model<IDoctorSummary>('DoctorSummary', DoctorSummarySchema);
+export default DoctorSummary;
+
