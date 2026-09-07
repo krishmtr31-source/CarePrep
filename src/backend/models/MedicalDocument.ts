@@ -48,6 +48,8 @@ export interface IMedicalDocument extends Document {
   extractionWarnings: string[];
   extractionStatus: 'PENDING' | 'PROCESSED' | 'FAILED';
   aiModel?: string;
+  rawText?: string;
+  rawJson?: any; // Full structured OCR medical report JSON
   processedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -153,6 +155,14 @@ const MedicalDocumentSchema: Schema = new Schema(
     aiModel: {
       type: String,
       default: 'gemini'
+    },
+    rawText: {
+      type: String,
+      default: ''
+    },
+    rawJson: {
+      type: Schema.Types.Mixed,
+      default: null
     },
     processedAt: {
       type: Date,

@@ -188,7 +188,22 @@ export const MedicalDocumentReviewModal: React.FC<MedicalDocumentReviewModalProp
         proceduresMentioned,
         importantNotes,
         extractionWarnings,
-        extractionStatus: 'PROCESSED' as const
+        extractionStatus: 'PROCESSED' as const,
+        rawJson: {
+          documentTitle,
+          documentType,
+          patientOverview: {
+            name: patientName,
+            doctorName,
+            hospitalName,
+            documentDate
+          },
+          labResults,
+          medications,
+          diagnoses: diagnosesMentioned,
+          summary,
+          doctorInstructions: importantNotes
+        }
       };
 
       const res = await medicalDocumentApi.saveDocument(payload);

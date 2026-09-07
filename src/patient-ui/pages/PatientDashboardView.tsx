@@ -46,7 +46,8 @@ import {
   Building2,
   BadgeCheck,
   CalendarCheck,
-  FileHeart
+  FileHeart,
+  Database
 } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
 import { useIntake } from '../../shared/contexts/IntakeContext';
@@ -64,7 +65,8 @@ import { AbnormalFindingsCard, AbnormalFindingItem } from '../components/Abnorma
 import { MedicalDocumentUploadModal } from '../components/MedicalDocumentUploadModal';
 import { MedicalDocumentReviewModal } from '../components/MedicalDocumentReviewModal';
 import { ViewOriginalDocumentModal } from '../components/ViewOriginalDocumentModal';
-import { medicalDocumentApi, StructuredExtractionResult } from '../../shared/api/medicalDocumentApi';
+import { StructuredMedicalReportModal } from '../components/StructuredMedicalReportModal';
+import { medicalDocumentApi, StructuredExtractionResult, MedicalDocumentRecord } from '../../shared/api/medicalDocumentApi';
 import { 
   carePrepApi, 
   MedicalHistoryData, 
@@ -227,6 +229,8 @@ export const PatientDashboardView: React.FC<PatientDashboardViewProps> = ({
     fileDataUrl: string | null;
     fileName: string;
   }>({ isOpen: false, fileDataUrl: null, fileName: '' });
+  const [rawMongoDocs, setRawMongoDocs] = useState<MedicalDocumentRecord[]>([]);
+  const [selectedMongoReportDoc, setSelectedMongoReportDoc] = useState<MedicalDocumentRecord | null>(null);
 
   // Strictly retrieve cases for the logged-in patient
   const patientId = patient?.id || user?.id || '';
@@ -267,8 +271,13 @@ export const PatientDashboardView: React.FC<PatientDashboardViewProps> = ({
             setDbMedicalHistory(history);
           }
           
+          if (Array.isArray(phase3Docs)) {
+            setRawMongoDocs(phase3Docs);
+          }
+          
           const combinedReports = [
             ...(Array.isArray(phase3Docs) ? phase3Docs.map((doc: any) => ({
+              rawDoc: doc,
               reportId: doc.documentId,
               patientId: doc.patientId,
               fileName: doc.documentTitle || doc.fileName,
@@ -425,6 +434,73 @@ export const PatientDashboardView: React.FC<PatientDashboardViewProps> = ({
     }
     return localDocs;
   }, [dbReports, localDocs, user]);
+
+  const handleOpenStructuredReport = async (doc: any) => {
+    // 1. Direct match in loaded MongoDB records
+    const match = rawMongoDocs.find(d => d.documentId === doc.documentId || (d as any)._id === doc.documentId);
+    if (match) {
+      setSelectedMongoReportDoc(match);
+      return;
+    }
+    // 2. Fetch directly from MongoDB backend endpoint by id
+    if (doc.documentId) {
+      try {
+        const fresh = await medicalDocumentApi.getDocument(doc.documentId);
+        if (fresh.success && fresh.document) {
+          setSelectedMongoReportDoc(fresh.document);
+          return;
+        }
+      } catch (err) {
+        console.warn('[PatientDashboardView] Could not fetch doc from MongoDB:', err);
+      }
+    }
+    // 3. Construct canonical MedicalDocumentRecord from dashboard document state
+    const constructed: MedicalDocumentRecord = {
+      documentId: doc.documentId || 'doc-report',
+      patientId: doc.patientId || patientId,
+      fileName: doc.fileName,
+      fileSize: doc.fileSize || 0,
+      mimeType: doc.fileType === 'pdf' ? 'application/pdf' : 'image/jpeg',
+      fileData: doc.originalFileUrl || '',
+      documentType: doc.classification || 'LAB_REPORT',
+      documentTitle: doc.fileName,
+      summary: doc.geminiAnalysis?.summary?.main_purpose || '',
+      labResults: (doc.labResults || []).map((l: any) => ({
+        testName: l.testName,
+        value: l.resultValue || l.value,
+        unit: l.unit || '',
+        referenceRange: l.sourceReferenceRange?.raw || l.referenceRange || '',
+        flag: l.flag || (l.isAbnormal ? 'HIGH' : 'NORMAL')
+      })),
+      medications: (doc.medications || []).map((m: any) => ({
+        name: m.name,
+        dosage: m.dosage || '',
+        frequency: m.frequency || '',
+        duration: m.duration || '',
+        route: 'Oral'
+      })),
+      diagnosesMentioned: (doc.diagnoses || []).map((d: any) => d.conditionName || d),
+      proceduresMentioned: [],
+      importantNotes: doc.geminiAnalysis?.summary?.key_findings || [],
+      extractionWarnings: doc.geminiAnalysis?.summary?.important_observations || [],
+      extractionStatus: doc.extractionStatus || 'PROCESSED',
+      rawJson: {
+        documentTitle: doc.fileName,
+        documentType: doc.classification || 'LAB_REPORT',
+        labResults: (doc.labResults || []).map((l: any) => ({
+          testName: l.testName,
+          value: l.resultValue || l.value,
+          unit: l.unit || '',
+          referenceRange: l.sourceReferenceRange?.raw || l.referenceRange || '',
+          flag: l.flag || (l.isAbnormal ? 'HIGH' : 'NORMAL')
+        })),
+        medications: doc.medications || [],
+        diagnoses: doc.diagnoses || [],
+        summary: doc.geminiAnalysis?.summary?.main_purpose || ''
+      }
+    };
+    setSelectedMongoReportDoc(constructed);
+  };
 
   // Determine current assessment status dynamically
   let assessmentState: 'Incomplete' | 'In Progress' | 'Completed' | 'Submitted to Doctor' = 'Incomplete';
@@ -1536,6 +1612,14 @@ export const PatientDashboardView: React.FC<PatientDashboardViewProps> = ({
                             </button>
                             <button
                               type="button"
+                              onClick={() => handleOpenStructuredReport(doc)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors shadow-2xs"
+                            >
+                              <Database className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>Structured Report</span>
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => setSelectedReportDoc(doc)}
                               className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors shadow-2xs"
                             >
@@ -1748,6 +1832,22 @@ export const PatientDashboardView: React.FC<PatientDashboardViewProps> = ({
         onClose={() => setPhase3OriginalDoc({ isOpen: false, fileDataUrl: null, fileName: '' })}
         fileDataUrl={phase3OriginalDoc.fileDataUrl}
         fileName={phase3OriginalDoc.fileName}
+      />
+
+      {/* Structured Medical Report Modal (Retrieved from MongoDB Atlas Database) */}
+      <StructuredMedicalReportModal
+        isOpen={Boolean(selectedMongoReportDoc)}
+        document={selectedMongoReportDoc}
+        onClose={() => setSelectedMongoReportDoc(null)}
+        onViewOriginal={() => {
+          if (selectedMongoReportDoc?.fileData) {
+            setPhase3OriginalDoc({
+              isOpen: true,
+              fileDataUrl: selectedMongoReportDoc.fileData,
+              fileName: selectedMongoReportDoc.fileName
+            });
+          }
+        }}
       />
     </div>
   );

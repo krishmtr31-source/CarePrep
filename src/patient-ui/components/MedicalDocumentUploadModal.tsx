@@ -27,7 +27,8 @@ import {
   Building2,
   Stethoscope,
   Pill,
-  Activity
+  Activity,
+  Database
 } from 'lucide-react';
 import { 
   extractTextFromFile, 
@@ -45,6 +46,7 @@ import {
   downloadOcrAsText 
 } from '../../document-intelligence/ocr/ocrExportUtils';
 import { 
+  medicalDocumentApi,
   StructuredExtractionResult, 
   ILabResultEntry, 
   IMedicationEntry 
@@ -97,6 +99,8 @@ export const MedicalDocumentUploadModal: React.FC<MedicalDocumentUploadModalProp
   const [extractedData, setExtractedData] = useState<StructuredOcrMedicalData | null>(null);
   const [editableRawText, setEditableRawText] = useState<string>('');
   const [isInferringRanges, setIsInferringRanges] = useState<boolean>(false);
+  const [isSavingToDb, setIsSavingToDb] = useState<boolean>(false);
+  const [dbSaveSuccess, setDbSaveSuccess] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -411,6 +415,69 @@ export const MedicalDocumentUploadModal: React.FC<MedicalDocumentUploadModalProp
       fileDataUrl,
       extraction
     });
+  };
+
+  const handleSaveDirectlyToMongo = async () => {
+    if (!selectedFile || !fileDataUrl || !extractedData) return;
+    setIsSavingToDb(true);
+    setErrorMessage(null);
+    setDbSaveSuccess(null);
+
+    try {
+      const mappedLabResults: ILabResultEntry[] = extractedData.labResults.map(l => ({
+        testName: l.testName,
+        value: l.resultValue,
+        unit: l.unit,
+        referenceRange: l.sourceReferenceRange.raw || '',
+        flag: l.flag
+      }));
+
+      const mappedMeds: IMedicationEntry[] = extractedData.medications.map(m => ({
+        name: m.name,
+        dosage: m.strength || m.dosage,
+        frequency: m.frequency,
+        duration: m.duration,
+        route: m.route || 'Oral'
+      }));
+
+      const payload = {
+        fileName: selectedFile.name,
+        fileSize: selectedFile.size,
+        mimeType: selectedFile.type || 'application/pdf',
+        fileData: fileDataUrl,
+        documentType: extractedData.documentType,
+        documentTitle: extractedData.documentTitle || selectedFile.name,
+        documentDate: extractedData.patientOverview.documentDate !== 'Not detected' ? extractedData.patientOverview.documentDate : null,
+        patientName: extractedData.patientOverview.name !== 'Not detected' ? extractedData.patientOverview.name : null,
+        doctorName: extractedData.patientOverview.doctorName !== 'Not detected' ? extractedData.patientOverview.doctorName : null,
+        hospitalName: extractedData.patientOverview.hospitalName !== 'Not detected' ? extractedData.patientOverview.hospitalName : null,
+        summary: extractedData.summary,
+        labResults: mappedLabResults,
+        medications: mappedMeds,
+        diagnosesMentioned: extractedData.diagnoses,
+        proceduresMentioned: [],
+        importantNotes: extractedData.doctorInstructions,
+        extractionWarnings: extractedData.quality.uncertainItems,
+        extractionStatus: 'PROCESSED' as const,
+        rawText: editableRawText || ocrResult?.text || '',
+        rawJson: extractedData
+      };
+
+      const res = await medicalDocumentApi.saveDocument(payload);
+      if (res.success && res.document) {
+        const docId = res.document.documentId || res.document._id;
+        setDbSaveSuccess(`Successfully stored in MongoDB Atlas! Document Record ID: ${docId}`);
+        setTimeout(() => {
+          handleSaveAndConfirm();
+        }, 1500);
+      } else {
+        throw new Error(res.error || 'Failed to persist document in MongoDB.');
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Error saving to MongoDB.');
+    } finally {
+      setIsSavingToDb(false);
+    }
   };
 
   const formatFileSize = (bytes: number): string => {
@@ -1137,13 +1204,20 @@ export const MedicalDocumentUploadModal: React.FC<MedicalDocumentUploadModalProp
                 </div>
               </div>
 
+              {dbSaveSuccess && (
+                <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs flex items-center gap-2 animate-in fade-in">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span className="font-semibold">{dbSaveSuccess}</span>
+                </div>
+              )}
+
               {/* Action Buttons Footer */}
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
                 <div className="flex items-center gap-2 text-xs">
                   <button
                     type="button"
                     onClick={handleRemove}
-                    disabled={modalState === 'OCR_IN_PROGRESS'}
+                    disabled={modalState === 'OCR_IN_PROGRESS' || isSavingToDb}
                     className="px-3.5 py-2 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-100 transition-colors disabled:opacity-40"
                   >
                     Clear Document
@@ -1151,14 +1225,35 @@ export const MedicalDocumentUploadModal: React.FC<MedicalDocumentUploadModalProp
                 </div>
 
                 {extractedData && modalState !== 'OCR_IN_PROGRESS' && (
-                  <button
-                    type="button"
-                    onClick={handleSaveAndConfirm}
-                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm shadow-md hover:shadow-lg transition-all"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Save to Health Records</span>
-                  </button>
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <button
+                      type="button"
+                      onClick={handleSaveDirectlyToMongo}
+                      disabled={isSavingToDb}
+                      className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm shadow-md transition-all disabled:opacity-50"
+                    >
+                      {isSavingToDb ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
+                          <span>Storing in MongoDB...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Database className="w-4 h-4 text-emerald-400" />
+                          <span>Store in MongoDB (JSON)</span>
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveAndConfirm}
+                      disabled={isSavingToDb}
+                      className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm shadow-md hover:shadow-lg transition-all"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Review &amp; Confirm</span>
+                    </button>
+                  </div>
                 )}
               </div>
             </div>

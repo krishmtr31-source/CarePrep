@@ -55,6 +55,8 @@ export interface MedicalDocumentRecord {
   extractionWarnings: string[];
   extractionStatus: 'PENDING' | 'PROCESSED' | 'FAILED';
   aiModel?: string;
+  rawText?: string;
+  rawJson?: any; // Full structured OCR medical report JSON retrieved from MongoDB
   processedAt?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -134,6 +136,40 @@ export const medicalDocumentApi = {
   },
 
   /**
+   * Directly converts raw OCR text into structured JSON and stores it in MongoDB.
+   */
+  async convertAndStoreOcrText(
+    rawText: string,
+    fileName: string,
+    fileDataUrl?: string
+  ): Promise<{ success: boolean; documentId?: string; document?: MedicalDocumentRecord; structuredReport?: any; error?: string }> {
+    try {
+      const res = await fetch('/api/ocr/convert-and-store', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          rawText,
+          fileName,
+          fileDataUrl
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Failed to convert and store OCR report in database.' };
+      }
+      return {
+        success: true,
+        documentId: data.documentId,
+        document: data.document,
+        structuredReport: data.structuredReport
+      };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to convert and store OCR report in database.' };
+    }
+  },
+
+  /**
    * Retrieves all medical documents for the authenticated patient, sorted newest first.
    */
   async getDocuments(patientId?: string): Promise<MedicalDocumentRecord[]> {
@@ -161,6 +197,24 @@ export const medicalDocumentApi = {
       return await res.json();
     } catch {
       return null;
+    }
+  },
+
+  /**
+   * Retrieves a single document by documentId with status wrapper.
+   */
+  async getDocument(id: string): Promise<{ success: boolean; document?: MedicalDocumentRecord; error?: string }> {
+    try {
+      const res = await fetch(`/api/medical-documents/${encodeURIComponent(id)}`, {
+        headers: getAuthHeaders()
+      });
+      if (!res.ok) {
+        return { success: false, error: 'Document not found' };
+      }
+      const data = await res.json();
+      return { success: true, document: data };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to fetch document' };
     }
   },
 

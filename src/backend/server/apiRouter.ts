@@ -109,7 +109,7 @@ export async function handleBackendApiRequest(
       if (handled) return true;
     }
 
-    if (url.startsWith('/api/medical-documents')) {
+    if (url.startsWith('/api/medical-documents') || url.startsWith('/api/ocr')) {
       const handled = await handleMedicalDocumentRoutes(req, res, url, user);
       if (handled) return true;
     }
